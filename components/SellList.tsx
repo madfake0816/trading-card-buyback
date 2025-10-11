@@ -7,7 +7,7 @@ import { useSellListStore } from '@/context/SellListContext'
 import { isFeatureEnabled } from '@/lib/features'
 import Checkout from './Checkout'
 import Papa from 'papaparse'
-import DHLShippingLabel from './DHLShippingLabel'
+
 
 export default function SellList() {
   const { language } = useLanguage()
