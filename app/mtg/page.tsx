@@ -13,6 +13,7 @@ import { useTranslations } from '@/lib/i18n'
 import { searchMTGCards, getMTGCardPrints, getCardInLanguage, ScryfallCard, getCardImageUrl, getCardDisplayName } from '@/lib/api/scryfall'
 import { isFeatureEnabled } from '@/lib/features'
 import MoxfieldImporter from '@/components/MoxfieldImporter'
+import { calculateBuyPrice, getPricingExplanation } from '@/lib/pricing'
 
 interface GroupedCard {
   name: string
@@ -355,9 +356,9 @@ function MTGPageContent() {
 }
 
   const handleAddToSellList = () => {
-    if (!selectedCard || !selectedSet) return
+  if (!selectedCard || !selectedSet) return
 
-    const buyPrice = selectedSet.marketPrice * 0.7
+  const buyPrice = calculateBuyPrice(selectedSet.marketPrice)  // ← NEW
     const displayName = currentCardData && language === 'de' 
       ? getCardDisplayName(currentCardData, true)
       : selectedCard.name
@@ -647,16 +648,21 @@ function MTGPageContent() {
     {selectedSet && !isLoadingGermanVersion && (
       <div className="space-y-3 sm:space-y-4">
         <div className="bg-yellow-accent text-black p-3 sm:p-4 rounded">
-          <div className="text-xs sm:text-sm font-semibold">
-            {t('estimatedBuyPrice')}
-          </div>
-          <div className="text-2xl sm:text-3xl font-bold">
-            €{(selectedSet.marketPrice * 0.7).toFixed(2)}
-          </div>
-          <div className="text-xs mt-1 opacity-80">
-            {t('pricePerCard')}
-          </div>
-        </div>
+  <div className="text-xs sm:text-sm font-semibold">
+    {t('estimatedBuyPrice')}
+  </div>
+  <div className="text-2xl sm:text-3xl font-bold">
+    €{calculateBuyPrice(selectedSet.marketPrice).toFixed(2)}  {/* ← NEW */}
+  </div>
+  <div className="text-xs mt-1 opacity-80">
+    {t('pricePerCard')}
+  </div>
+  
+  {/* Add pricing breakdown */}
+  <div className="text-xs mt-2 opacity-70">
+    {getPricingExplanation(selectedSet.marketPrice, language)}
+  </div>
+</div>
 
         {/* Quantity input */}
         <div>
