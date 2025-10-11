@@ -5,6 +5,7 @@ import Papa from 'papaparse'
 import { useLanguage } from '@/context/LanguageContext'
 import { useTranslations } from '@/lib/i18n'
 import { useSellListStore } from '@/context/SellListContext'
+import { calculateBuyPrice } from '@/lib/pricing'
 
 interface CSVImporterProps {
   tcgName: string
@@ -165,7 +166,8 @@ export default function CSVImporter({ tcgName, cards }: CSVImporterProps) {
           if (foundSet) matchedSet = foundSet
         }
 
-        const buyPrice = matchedSet.marketPrice * 0.7
+        // Calculate buy price using the new pricing logic
+        const buyPrice = calculateBuyPrice(matchedSet.marketPrice)
 
         addItem({
           id: `${matchedCard.id}-${matchedSet.code}-${Date.now()}-${Math.random()}`,
