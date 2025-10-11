@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-dark-blue text-white;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-yellow-accent text-black font-semibold py-2 px-4 rounded hover:bg-yellow-dark transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply bg-dark-blue-light text-white font-semibold py-2 px-4 rounded border border-yellow-accent hover:bg-yellow-accent hover:text-black transition-colors;
+  }
+  
+  .card {
+    @apply bg-dark-blue-light border border-gray-700 rounded-lg p-4 shadow-lg;
+  }
+  
+  .input-field {
+    @apply bg-dark-blue-light border border-gray-600 rounded px-4 py-2 text-white focus:outline-none focus:border-yellow-accent;
+  }
+}
+
+/* Mobile-first responsive utilities */
+@layer utilities {
+  .container-mobile {
+    @apply px-3 sm:px-4 md:px-6;
+  }
+  
+  .text-responsive {
+    @apply text-sm sm:text-base;
+  }
+  
+  .heading-responsive {
+    @apply text-xl sm:text-2xl md:text-3xl lg:text-4xl;
+  }
+  
+  .card-mobile {
+    @apply p-3 sm:p-4 md:p-6;
+  }
+}
+
+/* Ensure modals are scrollable on mobile */
+.modal-content {
+  max-height: 90vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent horizontal scroll on mobile */
+body {
+  overflow-x: hidden;
+}
+
+/* Better touch targets for mobile */
+@media (max-width: 640px) {
+  button, a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
