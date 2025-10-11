@@ -358,7 +358,15 @@ function MTGPageContent() {
   const handleAddToSellList = () => {
   if (!selectedCard || !selectedSet) return
 
+  
+
   const buyPrice = calculateBuyPrice(selectedSet.marketPrice)  // ← NEW
+
+  console.log('=== PRICING DEBUG ===')
+  console.log('Market Price:', selectedSet.marketPrice)
+  console.log('Calculated Buy Price:', buyPrice)
+  console.log('Old Buy Price (70%):', selectedSet.marketPrice * 0.7)
+  console.log('===================')
     const displayName = currentCardData && language === 'de' 
       ? getCardDisplayName(currentCardData, true)
       : selectedCard.name
