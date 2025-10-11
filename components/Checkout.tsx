@@ -3,8 +3,6 @@
 import { useState } from 'react'
 import { useLanguage } from '@/context/LanguageContext'
 import { useSellListStore } from '@/context/SellListContext'
-import DHLShippingLabel from './DHLShippingLabel'
-
 interface CheckoutProps {
   onClose: () => void
 }
@@ -296,24 +294,7 @@ export default function Checkout({ onClose }: CheckoutProps) {
               </ol>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-  <DHLShippingLabel />
-  
-  {isFeatureEnabled('enableCSVExport') && (
-    <button
-      onClick={handleExportCSV}
-      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors text-sm font-semibold"
-    >
-      📥 {t('exportCSV')}
-    </button>
-  )}
-  
-  {isFeatureEnabled('enableCheckout') && (
-    <button className="flex-1 btn-primary text-sm sm:text-base py-3">
-      {t('proceedToCheckout')}
-    </button>
-  )}
-</div>
+            
 
             <div>
               <h4 className="text-base sm:text-lg font-bold text-yellow-accent mb-3">
