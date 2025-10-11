@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useSellListStore } from '@/context/SellListContext'
 import { getMTGCardByName } from '@/lib/api/scryfall'
 import { useLanguage } from '@/context/LanguageContext'
+import { calculateBuyPrice } from '@/lib/pricing'
 
 interface MoxfieldCard {
   quantity: number
@@ -87,7 +88,7 @@ export default function MoxfieldImporter() {
           }
 
           const marketPrice = price > 0 ? price : 0.50
-          const buyPrice = marketPrice * 0.7
+          const buyPrice = calculateBuyPrice(marketPrice)
 
           // Get image URL
           let imageUrl = ''
