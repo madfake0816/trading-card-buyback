@@ -78,16 +78,6 @@ export default function SellList() {
           </div>
         </div>
 
-        {/* Quality Notice */}
-        <div className="bg-yellow-accent bg-opacity-20 border border-yellow-accent p-2 sm:p-3 rounded mb-3 sm:mb-4">
-          <p className="text-xs text-yellow-accent">
-            ⚠️ {language === 'de'
-              ? 'Preise für NM-Zustand. Unverbindliches Angebot.'
-              : 'Prices for NM condition. Non-binding offer.'
-            }
-          </p>
-        </div>
-
         {/* Mobile: Card list view */}
         <div className="block md:hidden space-y-3">
           {items.map((item) => (

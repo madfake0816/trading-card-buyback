@@ -1,13 +1,11 @@
-
 {
   "name": "trading-card-buyback",
   "version": "1.0.0",
   "private": true,
-  "scripts":{
-    "dev": "node server.js",
-    "dev:http": "next dev",
+  "scripts": {
+    "dev": "next dev",
     "build": "next build",
-    "start": "NODE_ENV=production node server.js",
+    "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {

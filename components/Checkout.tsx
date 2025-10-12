@@ -21,10 +21,6 @@ export default function Checkout({ onClose }: CheckoutProps) {
     phone: '+49 123 456789',
   }
 
-  const qualityNotice = language === 'de' 
-    ? 'Alle angezeigten Preise gelten für Karten in Near Mint (NM) Zustand. Bei niedrigerer Qualität werden die Preise entsprechend angepasst.'
-    : 'All displayed prices are for Near Mint (NM) condition cards. Prices will be adjusted accordingly for lower condition cards.'
-
   const nonBindingNotice = language === 'de'
     ? 'Die angezeigten Preise sind ein unverbindliches Angebot. Das endgültige Angebot wird nach Erhalt und Prüfung der Karten in unserem Shop erstellt. Wir behalten uns vor, Preise basierend auf dem tatsächlichen Zustand der Karten anzupassen.'
     : 'The displayed prices are a non-binding offer. The final offer will be made after receiving and inspecting the cards at our shop. We reserve the right to adjust prices based on the actual condition of the cards.'
@@ -139,10 +135,6 @@ export default function Checkout({ onClose }: CheckoutProps) {
           <div className="flex items-start">
             <span className="text-xl sm:text-2xl mr-2 sm:mr-3 flex-shrink-0">⚠️</span>
             <div>
-              <h3 className="font-bold mb-1 text-sm sm:text-base">
-                {language === 'de' ? 'Hinweis zur Kartenqualität' : 'Card Condition Notice'}
-              </h3>
-              <p className="text-xs sm:text-sm">{qualityNotice}</p>
             </div>
           </div>
         </div>

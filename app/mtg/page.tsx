@@ -8,7 +8,7 @@ import LanguageToggle from '@/components/LanguageToggle'
 import SellList from '@/components/SellList'
 import SafeImage from '@/components/SafeImage'
 import MTGCSVImporter from '@/components/MTGCSVImporter'
-// REMOVED: import CardScanner from '@/components/CardScanner'
+import SetIcon from '@/components/SetIcon'
 import { useTranslations } from '@/lib/i18n'
 import { searchMTGCards, getMTGCardPrints, getCardInLanguage, ScryfallCard, getCardImageUrl, getCardDisplayName } from '@/lib/api/scryfall'
 import { isFeatureEnabled } from '@/lib/features'
@@ -26,7 +26,7 @@ interface GroupedCard {
     germanData?: ScryfallCard
   }>
   imageUrl: string
-  regularImageCard?: ScryfallCard  // Add this
+  regularImageCard?: ScryfallCard
 }
 
 function MTGPageContent() {
@@ -43,15 +43,16 @@ function MTGPageContent() {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingSets, setIsLoadingSets] = useState(false)
   const [isLoadingGermanVersion, setIsLoadingGermanVersion] = useState(false)
+  const [hoveredSet, setHoveredSet] = useState<any>(null)
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+
   const getCardTreatment = (card: ScryfallCard): string => {
     const treatments: string[] = []
     
-    // Check for promo
     if (card.promo) {
       treatments.push(language === 'de' ? 'Promo' : 'Promo')
     }
     
-    // Check for special frames
     if (card.frame_effects) {
       if (card.frame_effects.includes('showcase')) {
         treatments.push(language === 'de' ? 'Showcase' : 'Showcase')
@@ -70,24 +71,20 @@ function MTGPageContent() {
       }
     }
     
-    // Check border color
     if (card.border_color === 'borderless') {
       if (!treatments.includes('Borderless') && !treatments.includes('Randlos')) {
         treatments.push(language === 'de' ? 'Randlos' : 'Borderless')
       }
     }
     
-    // Check for foil-only
     if (card.finishes && card.finishes.length === 1 && card.finishes[0] === 'foil') {
       treatments.push(language === 'de' ? 'Nur Foil' : 'Foil Only')
     }
     
-    // Check for special set types
     if (card.set_type === 'masterpiece') {
       treatments.push(language === 'de' ? 'Meisterwerk' : 'Masterpiece')
     }
     
-    // If no special treatment found, it's regular
     if (treatments.length === 0) {
       return language === 'de' ? 'Normal' : 'Regular'
     }
@@ -96,131 +93,83 @@ function MTGPageContent() {
   }
 
   const handleSearch = async (query: string) => {
-  if (query.length < 2) {
-    setSearchResults([])
-    return
-  }
-
-  setIsLoading(true)
-  try {
-    const results = await searchMTGCards(query, language)
-    
-    console.log('📦 Raw results:', results.length)
-    
-    // For German cards, fetch English versions to get prices
-    let processedResults = results
-    
-    if (language === 'de' && results.length > 0) {
-      console.log('🇩🇪 Fetching English prices for German cards...')
-      
-      const cardsWithPrices = await Promise.all(
-        results.map(async (germanCard) => {
-          // If German card already has a price, use it
-          const hasPrice = (germanCard.prices?.eur && germanCard.prices.eur !== 'null') ||
-                          (germanCard.prices?.usd && germanCard.prices.usd !== 'null')
-          
-          if (hasPrice) {
-            console.log('  ✅', germanCard.printed_name || germanCard.name, 'has price')
-            return germanCard
-          }
-          
-          // Otherwise, fetch English version to get price
-          try {
-            console.log('  🔄 Fetching English price for:', germanCard.printed_name || germanCard.name)
-            const englishCard = await getCardInLanguage(germanCard.set, germanCard.collector_number, 'en')
-            
-            if (englishCard && englishCard.prices) {
-              // Copy prices from English card to German card
-              return {
-                ...germanCard,
-                prices: englishCard.prices
-              }
-            }
-          } catch (error) {
-            console.log('  ⚠️ Could not fetch English price, using fallback')
-          }
-          
-          return germanCard
-        })
-      )
-      
-      processedResults = cardsWithPrices
-      console.log('✅ Prices fetched for German cards')
+    if (query.length < 2) {
+      setSearchResults([])
+      return
     }
-    
-    // Now filter by price
-    const resultsWithPrices = processedResults.filter(card => {
-      const hasEur = card.prices?.eur && card.prices.eur !== null && card.prices.eur !== 'null'
-      const hasUsd = card.prices?.usd && card.prices.usd !== null && card.prices.usd !== 'null'
-      return hasEur || hasUsd
-    })
-    
-    console.log('💰 Results with prices:', resultsWithPrices.length)
-    
-    const grouped = resultsWithPrices.reduce((acc: { [key: string]: GroupedCard }, card: ScryfallCard) => {
-      const cardName = card.name.split(' // ')[0].trim()
-      const displayName = getCardDisplayName(card, language === 'de')
+
+    setIsLoading(true)
+    try {
+      // Always search in English to ensure price data
+      const results = await searchMTGCards(query, 'en')
       
-      if (!acc[cardName]) {
-        acc[cardName] = {
-          name: cardName,
-          displayName: displayName.split(' // ')[0].trim(),
-          sets: [],
-          imageUrl: getCardImageUrl(card),
+      const resultsWithPrices = results.filter(card => {
+        const hasEur = card.prices?.eur && card.prices.eur !== null && card.prices.eur !== 'null'
+        const hasUsd = card.prices?.usd && card.prices.usd !== null && card.prices.usd !== 'null'
+        return hasEur || hasUsd
+      })
+      
+      const grouped = resultsWithPrices.reduce((acc: { [key: string]: GroupedCard }, card: ScryfallCard) => {
+        const cardName = card.name.split(' // ')[0].trim()
+        
+        if (!acc[cardName]) {
+          acc[cardName] = {
+            name: cardName,
+            displayName: cardName,
+            sets: [],
+            imageUrl: getCardImageUrl(card),
+          }
         }
-      }
+        
+        const eurPrice = card.prices?.eur
+        const usdPrice = card.prices?.usd
+        
+        let price = 0
+        if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
+          price = parseFloat(eurPrice)
+        } else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
+          price = parseFloat(usdPrice) * 0.92
+        }
+        
+        const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
+        
+        const existingSet = acc[cardName].sets.find(
+          s => s.code === card.set.toUpperCase() && 
+               s.cardData.collector_number === card.collector_number
+        )
+        
+        if (!existingSet) {
+          acc[cardName].sets.push({
+            code: card.set.toUpperCase(),
+            name: card.set_name,
+            marketPrice: marketPrice,
+            cardData: card,
+          })
+        }
+        
+        if (card.finishes?.includes('nonfoil') && !card.promo) {
+          acc[cardName].imageUrl = getCardImageUrl(card)
+        }
+        
+        return acc
+      }, {})
       
-      const eurPrice = card.prices?.eur
-      const usdPrice = card.prices?.usd
-      
-      let price = 0
-      if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
-        price = parseFloat(eurPrice)
-      } else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
-        price = parseFloat(usdPrice) * 0.92
-      }
-      
-      const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
-      
-      const existingSet = acc[cardName].sets.find(
-        s => s.code === card.set.toUpperCase() && 
-             s.cardData.collector_number === card.collector_number
+      const groupedArray = Object.values(grouped).sort((a, b) => 
+        a.displayName.localeCompare(b.displayName)
       )
       
-      if (!existingSet) {
-        acc[cardName].sets.push({
-          code: card.set.toUpperCase(),
-          name: card.set_name,
-          marketPrice: marketPrice,
-          cardData: card,
-        })
-      }
+      groupedArray.forEach(card => {
+        card.sets.sort((a, b) => b.marketPrice - a.marketPrice)
+      })
       
-      if (card.finishes?.includes('nonfoil') && !card.promo) {
-        acc[cardName].imageUrl = getCardImageUrl(card)
-      }
-      
-      return acc
-    }, {})
-    
-    const groupedArray = Object.values(grouped).sort((a, b) => 
-      a.displayName.localeCompare(b.displayName)
-    )
-    
-    console.log('📊 Final grouped results:', groupedArray.length)
-    
-    groupedArray.forEach(card => {
-      card.sets.sort((a, b) => b.marketPrice - a.marketPrice)
-    })
-    
-    setSearchResults(groupedArray)
-  } catch (error) {
-    console.error('Error searching MTG cards:', error)
-    setSearchResults([])
-  } finally {
-    setIsLoading(false)
+      setSearchResults(groupedArray)
+    } catch (error) {
+      console.error('Error searching MTG cards:', error)
+      setSearchResults([])
+    } finally {
+      setIsLoading(false)
+    }
   }
-}
 
  const handleSelectCard = async (card: GroupedCard) => {
   setSelectedCard(card)
@@ -228,145 +177,154 @@ function MTGPageContent() {
   setCurrentCardImage(card.imageUrl)
   setCurrentCardData(null)
   
-  if (card.sets.length < 5) {
-    setIsLoadingSets(true)
-    try {
-      const allPrints = await getMTGCardPrints(card.name, language)
+  setIsLoadingSets(true)
+  try {
+    // Always fetch English versions for pricing
+    const allPrints = await getMTGCardPrints(card.name, 'en')
+    
+    console.log('📦 All prints fetched:', allPrints.length)
+    
+    // Filter cards with prices AND log which ones are filtered
+    const printsWithPrices = allPrints.filter(print => {
+      const hasEur = print.prices?.eur && print.prices.eur !== null && print.prices.eur !== 'null'
+      const hasUsd = print.prices?.usd && print.prices.usd !== null && print.prices.usd !== 'null'
+      const hasPrices = hasEur || hasUsd
       
-      // Filter out cards without prices
-      const printsWithPrices = allPrints.filter(print => {
-        const hasEur = print.prices?.eur && print.prices.eur !== null && print.prices.eur !== 'null'
-        const hasUsd = print.prices?.usd && print.prices.usd !== null && print.prices.usd !== 'null'
-        return hasEur || hasUsd
-      })
+      if (!hasPrices) {
+        console.log('⚠️ Filtered out (no price):', print.set, print.collector_number)
+      }
       
-      // Map to our set structure
-      const allSets = printsWithPrices.map((print: ScryfallCard) => {
-        const price = parseFloat(print.prices.eur || print.prices.usd || '0')
-        const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
-        
-        return {
-          code: print.set.toUpperCase(),
-          name: print.set_name,
-          marketPrice: marketPrice,
-          cardData: print,
-        }
-      })
-      
-      // Only remove EXACT duplicates (same set + same collector number)
-      // Keep different treatments (showcase, extended art, etc.)
-      const uniqueSets = allSets.filter((set, index, self) =>
-        index === self.findIndex((s) => 
-          s.code === set.code && 
-          s.cardData.collector_number === set.cardData.collector_number
-        )
+      return hasPrices
+    })
+    
+    console.log('💰 Prints with prices:', printsWithPrices.length)
+    
+    if (printsWithPrices.length === 0) {
+      alert(language === 'de' 
+        ? 'Keine Preise für diese Karte verfügbar.'
+        : 'No pricing available for this card.'
       )
-      
-      console.log(`Total versions: ${uniqueSets.length}`)
-      
-      // Sort by price (highest first)
-      uniqueSets.sort((a, b) => b.marketPrice - a.marketPrice)
-      
-      setSelectedCard({
-        ...card,
-        sets: uniqueSets,
-      })
-      
-      if (uniqueSets.length > 0) {
-        await loadSetData(uniqueSets[0], card.name)
-      }
-    } catch (error) {
-      console.error('Error fetching all prints:', error)
-      if (card.sets.length > 0) {
-        await loadSetData(card.sets[0], card.name)
-      }
-    } finally {
       setIsLoadingSets(false)
+      return
     }
-  } else {
-    if (card.sets.length > 0) {
-      await loadSetData(card.sets[0], card.name)
+    
+    // Map to set structure with better price handling
+    const allSets = printsWithPrices.map((print: ScryfallCard) => {
+      const eurPrice = print.prices?.eur
+      const usdPrice = print.prices?.usd
+      
+      let price = 0
+      
+      // Try EUR first
+      if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
+        price = parseFloat(eurPrice)
+        console.log(`💶 ${print.set} #${print.collector_number}: EUR ${eurPrice}`)
+      } 
+      // Fallback to USD
+      else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
+        price = parseFloat(usdPrice) * 0.92
+        console.log(`💵 ${print.set} #${print.collector_number}: USD ${usdPrice} → EUR ${price.toFixed(2)}`)
+      }
+      
+      const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
+      
+      console.log(`📊 Final market price for ${print.set}: €${marketPrice.toFixed(2)}`)
+      
+      return {
+        code: print.set.toUpperCase(),
+        name: print.set_name,
+        marketPrice: marketPrice,
+        cardData: print,
+      }
+    })
+    
+    // Remove duplicates
+    const uniqueSets = allSets.filter((set, index, self) =>
+      index === self.findIndex((s) => 
+        s.code === set.code && 
+        s.cardData.collector_number === set.cardData.collector_number
+      )
+    )
+    
+    console.log(`✅ Total unique sets: ${uniqueSets.length}`)
+    
+    // Sort by price (highest first)
+    uniqueSets.sort((a, b) => b.marketPrice - a.marketPrice)
+    
+    setSelectedCard({
+      ...card,
+      sets: uniqueSets,
+    })
+    
+    if (uniqueSets.length > 0) {
+      console.log('🎯 Loading first set:', uniqueSets[0].code, 'Price:', uniqueSets[0].marketPrice)
+      await loadSetData(uniqueSets[0], card.name)
     }
+  } catch (error) {
+    console.error('❌ Error fetching all prints:', error)
+    alert(language === 'de'
+      ? 'Fehler beim Laden der Kartenversionen.'
+      : 'Error loading card versions.'
+    )
+  } finally {
+    setIsLoadingSets(false)
   }
 }
 
   const loadSetData = async (set: any, cardName: string) => {
-  console.log('=== LOAD SET DATA DEBUG ===')
-  console.log('Loading set:', set)
-  console.log('Set marketPrice:', set.marketPrice)
-  console.log('Set marketPrice type:', typeof set.marketPrice)
-  
-  setSelectedSet(set)
-  
-  if (language === 'de') {
-    setIsLoadingGermanVersion(true)
-    try {
-      const germanCard = await getCardInLanguage(
-        set.code,
-        set.cardData.collector_number,
-        'de'
-      )
-      
-      if (germanCard) {
-        console.log('German card found:', {
-          name: germanCard.name,
-          prices: germanCard.prices
-        })
+    setSelectedSet(set)
+    
+    if (language === 'de') {
+      setIsLoadingGermanVersion(true)
+      try {
+        const germanCard = await getCardInLanguage(
+          set.code,
+          set.cardData.collector_number,
+          'de'
+        )
         
-        set.germanData = germanCard
-        setCurrentCardData(germanCard)
-        setCurrentCardImage(getCardImageUrl(germanCard))
-      } else {
-        console.log('No German version, using English')
+        if (germanCard) {
+          set.germanData = germanCard
+          setCurrentCardData(germanCard)
+          setCurrentCardImage(getCardImageUrl(germanCard))
+        } else {
+          setCurrentCardData(set.cardData)
+          setCurrentCardImage(getCardImageUrl(set.cardData))
+        }
+      } catch (error) {
+        console.error('Error loading German version:', error)
         setCurrentCardData(set.cardData)
         setCurrentCardImage(getCardImageUrl(set.cardData))
+      } finally {
+        setIsLoadingGermanVersion(false)
       }
-    } catch (error) {
-      console.error('Error loading German version:', error)
+    } else {
       setCurrentCardData(set.cardData)
       setCurrentCardImage(getCardImageUrl(set.cardData))
-    } finally {
-      setIsLoadingGermanVersion(false)
     }
-  } else {
-    setCurrentCardData(set.cardData)
-    setCurrentCardImage(getCardImageUrl(set.cardData))
   }
-  
-  console.log('Final selectedSet after loadSetData:', set)
-}
 
   const handleSetChange = async (setCode: string, collectorNumber?: string) => {
-  if (!selectedCard) return
-  
-  let set
-  if (collectorNumber) {
-    // Find by both set code and collector number
-    set = selectedCard.sets.find(
-      (s) => s.code === setCode && s.cardData.collector_number === collectorNumber
-    )
-  } else {
-    // Fallback to just set code (old behavior)
-    set = selectedCard.sets.find((s) => s.code === setCode)
+    if (!selectedCard) return
+    
+    let set
+    if (collectorNumber) {
+      set = selectedCard.sets.find(
+        (s) => s.code === setCode && s.cardData.collector_number === collectorNumber
+      )
+    } else {
+      set = selectedCard.sets.find((s) => s.code === setCode)
+    }
+    
+    if (set) {
+      await loadSetData(set, selectedCard.name)
+    }
   }
-  
-  if (set) {
-    await loadSetData(set, selectedCard.name)
-  }
-}
 
   const handleAddToSellList = () => {
-  if (!selectedCard || !selectedSet) return
+    if (!selectedCard || !selectedSet) return
 
-  
-
-  const buyPrice = calculateBuyPrice(selectedSet.marketPrice)  // ← NEW
-
-  console.log('=== PRICING DEBUG ===')
-  console.log('Market Price:', selectedSet.marketPrice)
-  console.log('Calculated Buy Price:', buyPrice)
-  console.log('Old Buy Price (70%):', selectedSet.marketPrice * 0.7)
-  console.log('===================')
+    const buyPrice = calculateBuyPrice(selectedSet.marketPrice)
     const displayName = currentCardData && language === 'de' 
       ? getCardDisplayName(currentCardData, true)
       : selectedCard.name
@@ -411,12 +369,10 @@ function MTGPageContent() {
 
   return (
     <div className="min-h-screen bg-dark-blue">
-      {/* Mobile-optimized header */}
       <header className="bg-dark-blue-light border-b border-yellow-accent">
         <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 md:py-6">
           <div className="flex justify-between items-center gap-2 mb-3 sm:mb-4">
             <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
-              {/* Logo */}
               <Link href="/">
                 <img 
                   src='/SaltyCards-logo.jpg'
@@ -444,17 +400,7 @@ function MTGPageContent() {
       </header>
 
       <main className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
-        {/* Important Notices */}
-        <div className="mb-4 sm:mb-6 space-y-2 sm:space-y-3">
-          <div className="bg-yellow-accent bg-opacity-20 border border-yellow-accent p-3 sm:p-4 rounded-lg">
-            <p className="text-xs sm:text-sm text-yellow-accent">
-              ⚠️ <strong>{language === 'de' ? 'Hinweis:' : 'Notice:'}</strong>{' '}
-              {language === 'de'
-                ? 'Alle Preise gelten für Karten in Near Mint (NM) Zustand. Bei niedrigerer Qualität werden die Preise entsprechend angepasst.'
-                : 'All prices are for Near Mint (NM) condition cards. Prices will be adjusted accordingly for lower condition cards.'
-              }
-            </p>
-          </div>
+        <div className="mb-4 sm:mb-6">
           <div className="bg-blue-900 bg-opacity-30 border border-blue-400 p-3 sm:p-4 rounded-lg">
             <p className="text-xs sm:text-sm text-blue-300">
               ℹ️ <strong>{language === 'de' ? 'Unverbindliches Angebot:' : 'Non-Binding Offer:'}</strong>{' '}
@@ -466,23 +412,16 @@ function MTGPageContent() {
           </div>
         </div>
 
-        {/* Mobile-first grid layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-            {/* Search Card */}
             <div className="card p-3 sm:p-4 md:p-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <h2 className="text-xl sm:text-2xl font-bold text-yellow-accent">
                   {t('search')}
                 </h2>
-                <div className="flex gap-2 w-full sm:w-auto">
-                  {/* REMOVED: Scanner button */}
-                  
-                  {/* Only show CSV importer if feature is enabled */}
-                 <div className="flex flex-wrap gap-3 mb-6">
+                <div className="flex flex-wrap gap-2">
                   {isFeatureEnabled('enableCSVImport') && <MTGCSVImporter />}
                   <MoxfieldImporter />
-                </div>
                 </div>
               </div>
               <input
@@ -496,14 +435,9 @@ function MTGPageContent() {
                     setCurrentCardImage('')
                   }
                 }}
-                placeholder={language === 'de' ? 'Kartenname (Deutsch oder Englisch)...' : t('searchPlaceholder')}
+                placeholder={t('searchPlaceholder')}
                 className="input-field w-full text-sm sm:text-base"
               />
-              {language === 'de' && isFeatureEnabled('enableGermanLanguage') && (
-                <p className="text-xs text-gray-400 mt-2">
-                  💡 Sie können sowohl deutsche als auch englische Kartennamen verwenden
-                </p>
-              )}
               {isLoading && (
                 <div className="text-center text-gray-400 mt-4 text-sm sm:text-base">
                   {t('loading')}
@@ -511,7 +445,6 @@ function MTGPageContent() {
               )}
             </div>
 
-            {/* Search Results - Mobile optimized grid */}
             {searchResults.length > 0 && !selectedCard && (
               <div className="card p-3 sm:p-4 md:p-6">
                 <h3 className="text-lg sm:text-xl font-bold text-yellow-accent mb-3 sm:mb-4">
@@ -544,7 +477,6 @@ function MTGPageContent() {
               </div>
             )}
 
-            {/* Selected Card - Mobile optimized */}
             {selectedCard && (
               <div>
                 <button
@@ -561,7 +493,6 @@ function MTGPageContent() {
                 
                 <div className="card p-3 sm:p-4 md:p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                    {/* Card Image */}
                     <div>
                       {isLoadingGermanVersion ? (
                         <div className="flex items-center justify-center h-64 sm:h-96 bg-dark-blue rounded-lg">
@@ -586,7 +517,6 @@ function MTGPageContent() {
                       )}
                     </div>
 
-                    {/* Card Details */}
                     <div>
                       <h2 className="text-xl sm:text-2xl font-bold text-yellow-accent mb-3 sm:mb-4 break-words">
                         {currentCardData && language === 'de' 
@@ -599,104 +529,154 @@ function MTGPageContent() {
                           {currentCardData.name}
                         </p>
                       )}
-{isLoadingSets ? (
-  <div className="text-center text-gray-400 py-8 text-sm sm:text-base">
-    {t('loading')}
-  </div>
-) : (
-  <>
-    {/* SET SELECTION DROPDOWN - THIS IS THE WHOLE SECTION */}
-    <div className="mb-4">
-      <label className="block text-xs sm:text-sm font-semibold mb-2">
-        {t('selectSet')} ({selectedCard.sets.length} {t('available')})
-      </label>
-      
-      {/* THE SELECT DROPDOWN */}
-      <select
-        value={selectedSet?.code + '-' + selectedSet?.cardData.collector_number || ''}
-        onChange={(e) => {
-          const [code, collectorNum] = e.target.value.split('-')
-          const set = selectedCard.sets.find(
-            s => s.code === code && s.cardData.collector_number === collectorNum
-          )
-          if (set) {
-            handleSetChange(set.code, set.cardData.collector_number)
-          }
-        }}
-        className="input-field w-full text-sm sm:text-base"
-        disabled={isLoadingGermanVersion}
-      >
-        {selectedCard.sets.map((set) => {
-          const treatment = getCardTreatment(set.cardData)
-          const price = set.marketPrice.toFixed(2)
-          const isSpecial = treatment !== 'Regular' && treatment !== 'Normal'
-          
-          return (
-            <option 
-              key={`${set.code}-${set.cardData.collector_number}`}
-              value={`${set.code}-${set.cardData.collector_number}`}
-            >
-              {set.name} ({set.code}) #{set.cardData.collector_number} 
-              {isSpecial && ` ✨`} {treatment} 
-            </option>
-          )
-        })}
-      </select>
-      
-      {/* HELP TEXT */}
-      <p className="text-xs text-gray-400 mt-2">
-        💡 {language === 'de' 
-          ? 'Verschiedene Versionen können unterschiedliche Preise haben'
-          : 'Different treatments may have different prices'
-        }
-      </p>
-    </div>
 
-    {/* PRICE DISPLAY */}
-    {selectedSet && !isLoadingGermanVersion && (
-      <div className="space-y-3 sm:space-y-4">
-        <div className="bg-yellow-accent text-black p-3 sm:p-4 rounded">
+                      {isLoadingSets ? (
+                        <div className="text-center text-gray-400 py-8 text-sm sm:text-base">
+                          {t('loading')}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mb-4">
+                            <label className="block text-xs sm:text-sm font-semibold mb-2">
+                              {t('selectSet')} ({selectedCard.sets.length} {t('available')})
+                            </label>
+                            
+                            <div className="mt-2 max-h-64 overflow-y-auto border border-gray-700 rounded bg-dark-blue">
+                              {selectedCard.sets.map((set) => {
+                                const treatment = getCardTreatment(set.cardData)
+                                const isSpecial = treatment !== 'Regular' && treatment !== 'Normal'
+                                const rarity = set.cardData.rarity
+                                const isSelected = selectedSet?.code === set.code && 
+                                                  selectedSet?.cardData.collector_number === set.cardData.collector_number
+                                
+                                return (
+                                  <div
+                                    key={`${set.code}-${set.cardData.collector_number}`}
+                                    onClick={() => handleSetChange(set.code, set.cardData.collector_number)}
+                                    onMouseEnter={(e) => {
+                                      setHoveredSet(set)
+                                      const rect = e.currentTarget.getBoundingClientRect()
+                                      setMousePosition({ 
+                                        x: rect.right + 10, 
+                                        y: rect.top 
+                                      })
+                                    }}
+                                    onMouseLeave={() => setHoveredSet(null)}
+                                    className={`p-2 border-b border-gray-700 cursor-pointer hover:bg-dark-blue-light transition-colors ${
+                                      isSelected ? 'bg-dark-blue-light border-l-4 border-l-yellow-accent' : ''
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-shrink-0 bg-white rounded p-1.5 flex items-center justify-center" style={{ width: '32px', height: '32px' }}>
+                                        <SetIcon 
+                                          setCode={set.code.toLowerCase()} 
+                                          rarity={rarity}
+                                          size="medium"
+                                        />
+                                      </div>
+                                      
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-semibold text-xs truncate">
+                                          {set.name}
+                                          {isSpecial && <span className="ml-1 text-xs">✨</span>}
+                                        </div>
+                                        <div className="text-xs text-gray-400 flex items-center gap-2">
+                                          <span>{set.code.toUpperCase()}</span>
+                                          <span className="text-gray-600">•</span>
+                                          <span>#{set.cardData.collector_number}</span>
+                                          {treatment !== 'Regular' && treatment !== 'Normal' && (
+                                            <>
+                                              <span className="text-gray-600">•</span>
+                                              <span className="text-yellow-accent text-xs">{treatment}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+
+                            {hoveredSet && (
+  <div 
+    className="fixed z-[9999] pointer-events-none"
+    style={{
+      left: `${mousePosition.x}px`,
+      top: `${Math.max(20, mousePosition.y - 150)}px`,
+    }}
+  >
+    <div className="bg-dark-blue border-2 border-yellow-accent rounded-lg p-2 shadow-2xl">
+      <SafeImage
+        src={getCardImageUrl(hoveredSet.cardData)}
+        alt={hoveredSet.cardData.name}
+        className="rounded"
+        style={{ width: '200px', height: 'auto' }}
+        unoptimized
+      />
+      <div className="text-xs text-center text-gray-300 mt-2 font-semibold">
+        {hoveredSet.name}
+      </div>
+      <div className="text-xs text-center text-gray-500">
+        {hoveredSet.code.toUpperCase()} #{hoveredSet.cardData.collector_number}
+      </div>
+    </div>
+  </div>
+)}
+                          </div>
+
+                          {selectedSet && !isLoadingGermanVersion && (
+                            <div className="space-y-3 sm:space-y-4">
+                              <div className="bg-yellow-accent text-black p-3 sm:p-4 rounded">
   <div className="text-xs sm:text-sm font-semibold">
     {t('estimatedBuyPrice')}
   </div>
   <div className="text-2xl sm:text-3xl font-bold">
-    €{calculateBuyPrice(selectedSet.marketPrice).toFixed(2)}  {/* ← NEW */}
+    €{calculateBuyPrice(selectedSet.marketPrice).toFixed(2)}
   </div>
+  
+  {/* DEBUG INFO - REMOVE AFTER TESTING */}
+  <div className="text-xs mt-2 bg-black text-white p-2 rounded">
+    <div>Market: €{selectedSet.marketPrice.toFixed(2)}</div>
+    <div>Tier: {
+      selectedSet.marketPrice >= 3 ? '50% (€3+)' :
+      selectedSet.marketPrice >= 0.5 ? '10% (€0.50-2.99)' :
+      '¼¢ (under €0.50)'
+    }</div>
+    <div>Calculated: €{calculateBuyPrice(selectedSet.marketPrice).toFixed(4)}</div>
+  </div>
+  
   <div className="text-xs mt-1 opacity-80">
     {t('pricePerCard')}
   </div>
-  
-  {/* Add pricing breakdown */}
   <div className="text-xs mt-2 opacity-70">
     {getPricingExplanation(selectedSet.marketPrice, language)}
   </div>
 </div>
 
-        {/* Quantity input */}
-        <div>
-          <label className="block text-xs sm:text-sm font-semibold mb-2">
-            {t('quantity')}
-          </label>
-          <input
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-            className="input-field w-full text-sm sm:text-base"
-          />
-        </div>
+                              <div>
+                                <label className="block text-xs sm:text-sm font-semibold mb-2">
+                                  {t('quantity')}
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={quantity}
+                                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                                  className="input-field w-full text-sm sm:text-base"
+                                />
+                              </div>
 
-        {/* Add to sell list button */}
-        <button 
-          onClick={handleAddToSellList} 
-          className="btn-primary w-full text-sm sm:text-base py-3"
-        >
-          {t('addToSellList')}
-        </button>
-      </div>
-    )}
-  </>
-)}
+                              <button 
+                                onClick={handleAddToSellList} 
+                                className="btn-primary w-full text-sm sm:text-base py-3"
+                              >
+                                {t('addToSellList')}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -704,14 +684,11 @@ function MTGPageContent() {
             )}
           </div>
 
-          {/* Sell List - Stacks on mobile */}
           <div className="lg:col-span-1">
             <SellList />
           </div>
         </div>
       </main>
-
-      {/* REMOVED: Scanner modal */}
     </div>
   )
 }

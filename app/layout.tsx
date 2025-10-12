@@ -17,6 +17,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/keyrune@latest/css/keyrune.min.css"
+        />
+      </head>
       <body className={inter.className}>
         {children}
         
