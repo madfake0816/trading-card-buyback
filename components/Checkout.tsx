@@ -13,12 +13,12 @@ export default function Checkout({ onClose }: CheckoutProps) {
   const [selectedOption, setSelectedOption] = useState<'store' | 'mail' | null>(null)
 
   const shopAddress = {
-    name: 'Card Shop Buyback',
-    street: 'Musterstraße 123',
-    city: '12345 Musterstadt',
+    name: 'SaltyCards',
+    street: 'Stadtweg 8',
+    city: '24837 Schleswig',
     country: language === 'de' ? 'Deutschland' : 'Germany',
-    email: 'buyback@cardshop.com',
-    phone: '+49 123 456789',
+    email: 'info@saltycards.de',
+    phone: '+49 174/5238549',
   }
 
   const nonBindingNotice = language === 'de'
@@ -37,9 +37,13 @@ export default function Checkout({ onClose }: CheckoutProps) {
     addressTitle: 'Unsere Adresse',
     hoursTitle: 'Öffnungszeiten',
     hours: [
-      'Montag - Freitag: 10:00 - 19:00 Uhr',
-      'Samstag: 10:00 - 16:00 Uhr',
-      'Sonntag: Geschlossen',
+      'MO: 10:00 - 18:00 Uhr',
+      'DI: 10:00 - 18:00 Uhr',
+      'MI: 10:00 - 21:00 Uhr',
+      'DO: 10:00 - 18:00 Uhr',
+      'FR: 10:00 - 21:00 Uhr',
+      'SA: 10:00 - 21:00 Uhr',
+      'SO: Geschlossen',
     ],
   } : {
     title: 'Visit Our Store',
@@ -53,9 +57,13 @@ export default function Checkout({ onClose }: CheckoutProps) {
     addressTitle: 'Our Address',
     hoursTitle: 'Opening Hours',
     hours: [
-      'Monday - Friday: 10:00 AM - 7:00 PM',
-      'Saturday: 10:00 AM - 4:00 PM',
-      'Sunday: Closed',
+      'MON: 10:00 - 18:00',
+      'TUE: 10:00 - 18:00',
+      'WED: 10:00 - 21:00',
+      'THU: 10:00 - 18:00',
+      'FRI: 10:00 - 21:00',
+      'SAT: 10:00 - 21:00',
+      'SUN: Closed',
     ],
   }
 
@@ -126,15 +134,6 @@ export default function Checkout({ onClose }: CheckoutProps) {
               <p className="text-xs sm:text-sm text-blue-200">
                 {nonBindingNotice}
               </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Quality Notice */}
-        <div className="bg-yellow-accent text-black p-3 sm:p-4 rounded-lg mb-4 sm:mb-6">
-          <div className="flex items-start">
-            <span className="text-xl sm:text-2xl mr-2 sm:mr-3 flex-shrink-0">⚠️</span>
-            <div>
             </div>
           </div>
         </div>

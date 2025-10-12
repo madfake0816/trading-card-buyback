@@ -92,84 +92,187 @@ function MTGPageContent() {
     return treatments.join(' + ')
   }
 
-  const handleSearch = async (query: string) => {
-    if (query.length < 2) {
+ const handleSearch = async (query: string) => {
+  if (query.length < 2) {
+    setSearchResults([])
+    return
+  }
+
+  setIsLoading(true)
+  try {
+    // Search in English first
+    const englishResults = await searchMTGCards(query, 'en')
+    console.log('📦 English results:', englishResults.length)
+    
+    // If user is searching in German, also search German cards
+    let allResults = [...englishResults]
+    
+    // Try German search if the English search returned few/no results
+    if (language === 'de' || englishResults.length < 5) {
+      console.log('🇩🇪 Trying German search...')
+      const germanResults = await searchMTGCards(query, 'de')
+      console.log('📦 German results:', germanResults.length)
+      
+      // For each German card, find its English equivalent for pricing
+      for (const germanCard of germanResults) {
+        try {
+          // Fetch the English version of this card for pricing
+          const englishVersion = await getCardInLanguage(
+            germanCard.set,
+            germanCard.collector_number,
+            'en'
+          )
+          
+          if (englishVersion) {
+            // Check if we already have this card from English search
+            const alreadyHave = allResults.find(
+              r => r.set === englishVersion.set && 
+                   r.collector_number === englishVersion.collector_number
+            )
+            
+            if (!alreadyHave) {
+              allResults.push(englishVersion)
+            }
+          }
+        } catch (error) {
+          console.log('⚠️ Could not fetch English version for:', germanCard.set, germanCard.collector_number)
+        }
+      }
+    }
+    
+    console.log('📦 Total results after combining:', allResults.length)
+    
+    // Filter cards with prices (including foil)
+    const resultsWithPrices = allResults.filter(card => {
+      const eurPrice = card.prices?.eur
+      const usdPrice = card.prices?.usd
+      const eurFoil = card.prices?.eur_foil
+      const usdFoil = card.prices?.usd_foil
+      
+      const hasValidEur = eurPrice && eurPrice !== null && eurPrice !== 'null' && !isNaN(parseFloat(eurPrice)) && parseFloat(eurPrice) > 0
+      const hasValidUsd = usdPrice && usdPrice !== null && usdPrice !== 'null' && !isNaN(parseFloat(usdPrice)) && parseFloat(usdPrice) > 0
+      const hasValidEurFoil = eurFoil && eurFoil !== null && eurFoil !== 'null' && !isNaN(parseFloat(eurFoil)) && parseFloat(eurFoil) > 0
+      const hasValidUsdFoil = usdFoil && usdFoil !== null && usdFoil !== 'null' && !isNaN(parseFloat(usdFoil)) && parseFloat(usdFoil) > 0
+      
+      if (!hasValidEur && !hasValidUsd && !hasValidEurFoil && !hasValidUsdFoil) {
+        console.log('❌ Filtered (no price):', card.set, card.collector_number)
+      }
+      
+      return hasValidEur || hasValidUsd || hasValidEurFoil || hasValidUsdFoil
+    })
+    
+    console.log('💰 Cards with prices:', resultsWithPrices.length)
+    
+    if (resultsWithPrices.length === 0) {
+      alert(language === 'de'
+        ? 'Keine Karten mit Preisen gefunden.'
+        : 'No cards with pricing found.'
+      )
       setSearchResults([])
+      setIsLoading(false)
       return
     }
-
-    setIsLoading(true)
-    try {
-      // Always search in English to ensure price data
-      const results = await searchMTGCards(query, 'en')
+    
+    const grouped = resultsWithPrices.reduce((acc: { [key: string]: GroupedCard }, card: ScryfallCard) => {
+      const cardName = card.name.split(' // ')[0].trim()
       
-      const resultsWithPrices = results.filter(card => {
-        const hasEur = card.prices?.eur && card.prices.eur !== null && card.prices.eur !== 'null'
-        const hasUsd = card.prices?.usd && card.prices.usd !== null && card.prices.usd !== 'null'
-        return hasEur || hasUsd
-      })
+      if (!acc[cardName]) {
+        acc[cardName] = {
+          name: cardName,
+          displayName: cardName,
+          sets: [],
+          imageUrl: getCardImageUrl(card),
+        }
+      }
       
-      const grouped = resultsWithPrices.reduce((acc: { [key: string]: GroupedCard }, card: ScryfallCard) => {
-        const cardName = card.name.split(' // ')[0].trim()
-        
-        if (!acc[cardName]) {
-          acc[cardName] = {
-            name: cardName,
-            displayName: cardName,
-            sets: [],
-            imageUrl: getCardImageUrl(card),
-          }
+      // Try all price options
+      const eurPrice = card.prices?.eur
+      const usdPrice = card.prices?.usd
+      const eurFoil = card.prices?.eur_foil
+      const usdFoil = card.prices?.usd_foil
+      
+      let price = 0
+      let priceSource = ''
+      
+      if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
+        const parsed = parseFloat(eurPrice)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed
+          priceSource = 'EUR'
         }
-        
-        const eurPrice = card.prices?.eur
-        const usdPrice = card.prices?.usd
-        
-        let price = 0
-        if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
-          price = parseFloat(eurPrice)
-        } else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
-          price = parseFloat(usdPrice) * 0.92
+      }
+      
+      if (price === 0 && usdPrice && usdPrice !== 'null' && usdPrice !== null) {
+        const parsed = parseFloat(usdPrice)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed * 0.85
+          priceSource = 'USD'
         }
-        
-        const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
-        
-        const existingSet = acc[cardName].sets.find(
-          s => s.code === card.set.toUpperCase() && 
-               s.cardData.collector_number === card.collector_number
-        )
-        
-        if (!existingSet) {
-          acc[cardName].sets.push({
-            code: card.set.toUpperCase(),
-            name: card.set_name,
-            marketPrice: marketPrice,
-            cardData: card,
-          })
+      }
+      
+      if (price === 0 && eurFoil && eurFoil !== 'null' && eurFoil !== null) {
+        const parsed = parseFloat(eurFoil)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed
+          priceSource = 'EUR Foil'
         }
-        
-        if (card.finishes?.includes('nonfoil') && !card.promo) {
-          acc[cardName].imageUrl = getCardImageUrl(card)
+      }
+      
+      if (price === 0 && usdFoil && usdFoil !== 'null' && usdFoil !== null) {
+        const parsed = parseFloat(usdFoil)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed * 0.85
+          priceSource = 'USD Foil'
         }
-        
+      }
+      
+      console.log(`💰 ${card.set} #${card.collector_number}: ${priceSource} €${price.toFixed(2)}`)
+      
+      if (price === 0) {
         return acc
-      }, {})
+      }
       
-      const groupedArray = Object.values(grouped).sort((a, b) => 
-        a.displayName.localeCompare(b.displayName)
+      const marketPrice = price
+      
+      const existingSet = acc[cardName].sets.find(
+        s => s.code === card.set.toUpperCase() && 
+             s.cardData.collector_number === card.collector_number
       )
       
-      groupedArray.forEach(card => {
-        card.sets.sort((a, b) => b.marketPrice - a.marketPrice)
-      })
+      if (!existingSet) {
+        acc[cardName].sets.push({
+          code: card.set.toUpperCase(),
+          name: card.set_name,
+          marketPrice: marketPrice,
+          cardData: card,
+        })
+      }
       
-      setSearchResults(groupedArray)
-    } catch (error) {
-      console.error('Error searching MTG cards:', error)
-      setSearchResults([])
-    } finally {
-      setIsLoading(false)
-    }
+      if (card.finishes?.includes('nonfoil') && !card.promo) {
+        acc[cardName].imageUrl = getCardImageUrl(card)
+      }
+      
+      return acc
+    }, {})
+    
+    const groupedArray = Object.values(grouped).sort((a, b) => 
+      a.displayName.localeCompare(b.displayName)
+    )
+    
+    console.log('📊 Final grouped cards:', groupedArray.length)
+    
+    groupedArray.forEach(card => {
+      card.sets.sort((a, b) => b.marketPrice - a.marketPrice)
+    })
+    
+    setSearchResults(groupedArray)
+  } catch (error) {
+    console.error('❌ Search error:', error)
+    setSearchResults([])
+  } finally {
+    setIsLoading(false)
   }
+}
 
  const handleSelectCard = async (card: GroupedCard) => {
   setSelectedCard(card)
@@ -179,56 +282,81 @@ function MTGPageContent() {
   
   setIsLoadingSets(true)
   try {
-    // Always fetch English versions for pricing
     const allPrints = await getMTGCardPrints(card.name, 'en')
     
     console.log('📦 All prints fetched:', allPrints.length)
     
-    // Filter cards with prices AND log which ones are filtered
+    // Check for ANY price including foil
     const printsWithPrices = allPrints.filter(print => {
-      const hasEur = print.prices?.eur && print.prices.eur !== null && print.prices.eur !== 'null'
-      const hasUsd = print.prices?.usd && print.prices.usd !== null && print.prices.usd !== 'null'
-      const hasPrices = hasEur || hasUsd
+      const eurPrice = print.prices?.eur
+      const usdPrice = print.prices?.usd
+      const eurFoil = print.prices?.eur_foil
+      const usdFoil = print.prices?.usd_foil
       
-      if (!hasPrices) {
-        console.log('⚠️ Filtered out (no price):', print.set, print.collector_number)
-      }
+      const hasValidEur = eurPrice && eurPrice !== null && eurPrice !== 'null' && !isNaN(parseFloat(eurPrice)) && parseFloat(eurPrice) > 0
+      const hasValidUsd = usdPrice && usdPrice !== null && usdPrice !== 'null' && !isNaN(parseFloat(usdPrice)) && parseFloat(usdPrice) > 0
+      const hasValidEurFoil = eurFoil && eurFoil !== null && eurFoil !== 'null' && !isNaN(parseFloat(eurFoil)) && parseFloat(eurFoil) > 0
+      const hasValidUsdFoil = usdFoil && usdFoil !== null && usdFoil !== 'null' && !isNaN(parseFloat(usdFoil)) && parseFloat(usdFoil) > 0
       
-      return hasPrices
+      return hasValidEur || hasValidUsd || hasValidEurFoil || hasValidUsdFoil
     })
     
     console.log('💰 Prints with prices:', printsWithPrices.length)
     
     if (printsWithPrices.length === 0) {
-      alert(language === 'de' 
-        ? 'Keine Preise für diese Karte verfügbar.'
-        : 'No pricing available for this card.'
-      )
+      alert(language === 'de' ? 'Keine Preise verfügbar.' : 'No pricing available.')
       setIsLoadingSets(false)
       return
     }
     
-    // Map to set structure with better price handling
     const allSets = printsWithPrices.map((print: ScryfallCard) => {
       const eurPrice = print.prices?.eur
       const usdPrice = print.prices?.usd
+      const eurFoil = print.prices?.eur_foil
+      const usdFoil = print.prices?.usd_foil
       
       let price = 0
+      let priceSource = ''
       
-      // Try EUR first
+      // Try EUR non-foil
       if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
-        price = parseFloat(eurPrice)
-        console.log(`💶 ${print.set} #${print.collector_number}: EUR ${eurPrice}`)
-      } 
-      // Fallback to USD
-      else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
-        price = parseFloat(usdPrice) * 0.92
-        console.log(`💵 ${print.set} #${print.collector_number}: USD ${usdPrice} → EUR ${price.toFixed(2)}`)
+        const parsed = parseFloat(eurPrice)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed
+          priceSource = 'EUR'
+        }
       }
       
-      const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
+      // Try USD non-foil
+      if (price === 0 && usdPrice && usdPrice !== 'null' && usdPrice !== null) {
+        const parsed = parseFloat(usdPrice)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed * 0.85
+          priceSource = 'USD'
+        }
+      }
       
-      console.log(`📊 Final market price for ${print.set}: €${marketPrice.toFixed(2)}`)
+      // Try EUR foil
+      if (price === 0 && eurFoil && eurFoil !== 'null' && eurFoil !== null) {
+        const parsed = parseFloat(eurFoil)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed
+          priceSource = 'EUR Foil'
+        }
+      }
+      
+      // Try USD foil
+      if (price === 0 && usdFoil && usdFoil !== 'null' && usdFoil !== null) {
+        const parsed = parseFloat(usdFoil)
+        if (!isNaN(parsed) && parsed > 0) {
+          price = parsed * 0.85
+          priceSource = 'USD Foil'
+        }
+      }
+      
+      console.log(`💰 ${print.set} #${print.collector_number}: ${priceSource} €${price.toFixed(2)}`)
+      
+      const marketPrice = price > 0 ? price : 0.50
       
       return {
         code: print.set.toUpperCase(),
@@ -236,9 +364,8 @@ function MTGPageContent() {
         marketPrice: marketPrice,
         cardData: print,
       }
-    })
+    }).filter(set => set.marketPrice >= 0.50)
     
-    // Remove duplicates
     const uniqueSets = allSets.filter((set, index, self) =>
       index === self.findIndex((s) => 
         s.code === set.code && 
@@ -248,7 +375,6 @@ function MTGPageContent() {
     
     console.log(`✅ Total unique sets: ${uniqueSets.length}`)
     
-    // Sort by price (highest first)
     uniqueSets.sort((a, b) => b.marketPrice - a.marketPrice)
     
     setSelectedCard({
@@ -261,11 +387,7 @@ function MTGPageContent() {
       await loadSetData(uniqueSets[0], card.name)
     }
   } catch (error) {
-    console.error('❌ Error fetching all prints:', error)
-    alert(language === 'de'
-      ? 'Fehler beim Laden der Kartenversionen.'
-      : 'Error loading card versions.'
-    )
+    console.error('❌ Error:', error)
   } finally {
     setIsLoadingSets(false)
   }
@@ -345,7 +467,7 @@ function MTGPageContent() {
       ? `${quantity}x ${displayName} zur Verkaufsliste hinzugefügt!`
       : `Added ${quantity}x ${displayName} to sell list!`
     
-    alert(message)
+
     setQuantity(1)
   }
 
@@ -537,93 +659,102 @@ function MTGPageContent() {
                       ) : (
                         <>
                           <div className="mb-4">
-                            <label className="block text-xs sm:text-sm font-semibold mb-2">
-                              {t('selectSet')} ({selectedCard.sets.length} {t('available')})
-                            </label>
-                            
-                            <div className="mt-2 max-h-64 overflow-y-auto border border-gray-700 rounded bg-dark-blue">
-                              {selectedCard.sets.map((set) => {
-                                const treatment = getCardTreatment(set.cardData)
-                                const isSpecial = treatment !== 'Regular' && treatment !== 'Normal'
-                                const rarity = set.cardData.rarity
-                                const isSelected = selectedSet?.code === set.code && 
-                                                  selectedSet?.cardData.collector_number === set.cardData.collector_number
-                                
-                                return (
-                                  <div
-                                    key={`${set.code}-${set.cardData.collector_number}`}
-                                    onClick={() => handleSetChange(set.code, set.cardData.collector_number)}
-                                    onMouseEnter={(e) => {
-                                      setHoveredSet(set)
-                                      const rect = e.currentTarget.getBoundingClientRect()
-                                      setMousePosition({ 
-                                        x: rect.right + 10, 
-                                        y: rect.top 
-                                      })
-                                    }}
-                                    onMouseLeave={() => setHoveredSet(null)}
-                                    className={`p-2 border-b border-gray-700 cursor-pointer hover:bg-dark-blue-light transition-colors ${
-                                      isSelected ? 'bg-dark-blue-light border-l-4 border-l-yellow-accent' : ''
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex-shrink-0 bg-white rounded p-1.5 flex items-center justify-center" style={{ width: '32px', height: '32px' }}>
-                                        <SetIcon 
-                                          setCode={set.code.toLowerCase()} 
-                                          rarity={rarity}
-                                          size="medium"
-                                        />
-                                      </div>
-                                      
-                                      <div className="flex-1 min-w-0">
-                                        <div className="font-semibold text-xs truncate">
-                                          {set.name}
-                                          {isSpecial && <span className="ml-1 text-xs">✨</span>}
-                                        </div>
-                                        <div className="text-xs text-gray-400 flex items-center gap-2">
-                                          <span>{set.code.toUpperCase()}</span>
-                                          <span className="text-gray-600">•</span>
-                                          <span>#{set.cardData.collector_number}</span>
-                                          {treatment !== 'Regular' && treatment !== 'Normal' && (
-                                            <>
-                                              <span className="text-gray-600">•</span>
-                                              <span className="text-yellow-accent text-xs">{treatment}</span>
-                                            </>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-
-                            {hoveredSet && (
+  <label className="block text-xs sm:text-sm font-semibold mb-2">
+    {t('selectSet')} ({selectedCard.sets.length} {t('available')})
+  </label>
+  
+  {/* Container with onMouseLeave to clear hover when leaving entire list */}
   <div 
-    className="fixed z-[9999] pointer-events-none"
-    style={{
-      left: `${mousePosition.x}px`,
-      top: `${Math.max(20, mousePosition.y - 150)}px`,
+    className="mt-2 max-h-64 overflow-y-auto border border-gray-700 rounded bg-dark-blue"
+    onMouseLeave={() => {
+      console.log('🚫 Mouse left container, clearing hover')
+      setHoveredSet(null)
     }}
   >
-    <div className="bg-dark-blue border-2 border-yellow-accent rounded-lg p-2 shadow-2xl">
-      <SafeImage
-        src={getCardImageUrl(hoveredSet.cardData)}
-        alt={hoveredSet.cardData.name}
-        className="rounded"
-        style={{ width: '200px', height: 'auto' }}
-        unoptimized
-      />
-      <div className="text-xs text-center text-gray-300 mt-2 font-semibold">
-        {hoveredSet.name}
-      </div>
-      <div className="text-xs text-center text-gray-500">
-        {hoveredSet.code.toUpperCase()} #{hoveredSet.cardData.collector_number}
+    {selectedCard.sets.map((set) => {
+      const treatment = getCardTreatment(set.cardData)
+      const isSpecial = treatment !== 'Regular' && treatment !== 'Normal'
+      const rarity = set.cardData.rarity
+      const isSelected = selectedSet?.code === set.code && 
+                        selectedSet?.cardData.collector_number === set.cardData.collector_number
+      
+      return (
+        <div
+          key={`${set.code}-${set.cardData.collector_number}`}
+          onClick={() => handleSetChange(set.code, set.cardData.collector_number)}
+          onMouseEnter={(e) => {
+            console.log('✅ Hovering:', set.code, set.cardData.collector_number)
+            setHoveredSet(set)
+            const rect = e.currentTarget.getBoundingClientRect()
+            setMousePosition({ 
+              x: rect.right + 10, 
+              y: rect.top 
+            })
+          }}
+          className={`p-2 border-b border-gray-700 cursor-pointer hover:bg-dark-blue-light transition-colors ${
+            isSelected ? 'bg-dark-blue-light border-l-4 border-l-yellow-accent' : ''
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <div className="flex-shrink-0 bg-white rounded p-1.5 flex items-center justify-center" style={{ width: '32px', height: '32px' }}>
+              <SetIcon 
+                setCode={set.code.toLowerCase()} 
+                rarity={rarity}
+                size="medium"
+              />
+            </div>
+            
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-xs truncate">
+                {set.name}
+                {isSpecial && <span className="ml-1 text-xs">✨</span>}
+              </div>
+              <div className="text-xs text-gray-400 flex items-center gap-2">
+                <span>{set.code.toUpperCase()}</span>
+                <span className="text-gray-600">•</span>
+                <span>#{set.cardData.collector_number}</span>
+                {treatment !== 'Regular' && treatment !== 'Normal' && (
+                  <>
+                    <span className="text-gray-600">•</span>
+                    <span className="text-yellow-accent text-xs">{treatment}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    })}
+  </div>
+
+  {/* HOVER PREVIEW */}
+  {hoveredSet && (
+    <div 
+      className="fixed z-[9999] pointer-events-none"
+      style={{
+        left: `${mousePosition.x}px`,
+        top: `${Math.max(20, mousePosition.y - 150)}px`,
+      }}
+    >
+      <div className="bg-dark-blue border-2 border-yellow-accent rounded-lg p-2 shadow-2xl">
+        <SafeImage
+          key={`${hoveredSet.code}-${hoveredSet.cardData.collector_number}`}
+          src={getCardImageUrl(hoveredSet.cardData)}
+          alt={hoveredSet.cardData.name}
+          className="rounded"
+          style={{ width: '200px', height: 'auto' }}
+          unoptimized
+        />
+        <div className="text-xs text-center text-gray-300 mt-2 font-semibold">
+          {hoveredSet.name}
+        </div>
+        <div className="text-xs text-center text-gray-500">
+          {hoveredSet.code.toUpperCase()} #{hoveredSet.cardData.collector_number}
+        </div>
       </div>
     </div>
-  </div>
-)}
-                          </div>
+  )}
+</div>
 
                           {selectedSet && !isLoadingGermanVersion && (
                             <div className="space-y-3 sm:space-y-4">

@@ -68,72 +68,31 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 // Search with language support
 export async function searchMTGCards(query: string, language: string = 'en'): Promise<ScryfallCard[]> {
   try {
-    console.log('🔍 Searching Scryfall:', { query, language })
+    console.log('🔍 Searching Scryfall:', query, 'Language:', language)
     
-    // Build search query
-    let searchQuery = query
+    const encodedQuery = encodeURIComponent(query)
+    const langFilter = language === 'de' ? '+lang:de' : '+lang:en'
     
-    // If German mode, add language filter to get German cards
-    if (language === 'de') {
-      searchQuery = `${query} lang:de`
-    }
+    const url = `https://api.scryfall.com/cards/search?q=${encodedQuery}${langFilter}&unique=prints`
     
-    console.log('📡 Search query:', searchQuery)
+    console.log('📡 Search query:', url)
     
-    const response = await fetch(
-      `https://api.scryfall.com/cards/search?q=${encodeURIComponent(searchQuery)}&unique=prints&order=released`,
-      {
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    )
-
+    const response = await fetch(url)
+    
     if (!response.ok) {
       if (response.status === 404) {
         console.log('❌ No results found')
-        
-        // If no German results found, try searching in English
-        if (language === 'de') {
-          console.log('🔄 Trying English search as fallback...')
-          const fallbackResponse = await fetch(
-            `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=prints&order=released`,
-            {
-              headers: {
-                'Accept': 'application/json',
-              },
-            }
-          )
-          
-          if (fallbackResponse.ok) {
-            const fallbackData = await fallbackResponse.json()
-            console.log('✅ Fallback found:', fallbackData.data?.length || 0, 'English cards')
-            return fallbackData.data || []
-          }
-        }
-        
         return []
       }
       throw new Error(`Scryfall API error: ${response.status}`)
     }
-
+    
     const data = await response.json()
-    
     console.log('✅ Scryfall returned:', data.data?.length || 0, 'cards')
-    
-    // Log first card to debug
-    if (data.data && data.data.length > 0) {
-      console.log('First card:', {
-        name: data.data[0].name,
-        lang: data.data[0].lang,
-        printed_name: data.data[0].printed_name,
-        prices: data.data[0].prices
-      })
-    }
     
     return data.data || []
   } catch (error) {
-    console.error('❌ Error searching MTG cards:', error)
+    console.error('❌ Scryfall search error:', error)
     return []
   }
 }
@@ -175,33 +134,39 @@ export async function getMTGCardByName(name: string): Promise<ScryfallCard | nul
 
 export async function getMTGCardPrints(cardName: string, language: string = 'en'): Promise<ScryfallCard[]> {
   try {
-    const response = await fetch(
-      `https://api.scryfall.com/cards/search?q=!"${encodeURIComponent(cardName)}"&unique=prints&order=released`,
-      {
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    )
-
+    const encodedName = encodeURIComponent(`!"${cardName}"`)
+    const url = `https://api.scryfall.com/cards/search?q=${encodedName}&unique=prints&order=released`
+    
+    console.log('🔍 Fetching prints for:', cardName)
+    console.log('📡 URL:', url)
+    
+    const response = await fetch(url)
+    
     if (!response.ok) {
-      if (response.status === 404) {
-        return []
-      }
-      throw new Error(`Scryfall API error: ${response.status}`)
+      console.error('❌ Scryfall API error:', response.status, response.statusText)
+      return []
     }
-
+    
     const data = await response.json()
     
-    // Log to debug
+    console.log('📦 Total prints from API:', data.data?.length || 0)
+    
+    // Log ALL prices for debugging
     if (data.data && data.data.length > 0) {
-      console.log('Prints found:', data.data.length)
-      console.log('First print prices:', data.data[0].prices)
+      console.log('💰 PRICE DEBUG - All prints:')
+      data.data.forEach((card: ScryfallCard, index: number) => {
+        console.log(`  ${index + 1}. ${card.set.toUpperCase()} #${card.collector_number}:`)
+        console.log(`     EUR: ${card.prices?.eur || 'null'}`)
+        console.log(`     USD: ${card.prices?.usd || 'null'}`)
+        console.log(`     USD Foil: ${card.prices?.usd_foil || 'null'}`)
+        console.log(`     Tix: ${card.prices?.tix || 'null'}`)
+        console.log(`     Full prices object:`, card.prices)
+      })
     }
     
     return data.data || []
   } catch (error) {
-    console.error('Error fetching card prints:', error)
+    console.error('❌ Error fetching prints:', error)
     return []
   }
 }
