@@ -7,6 +7,7 @@ import { useTranslations } from '@/lib/i18n'
 import { useSellListStore } from '@/context/SellListContext'
 import { getMTGCardByName, getCardImageUrl } from '@/lib/api/scryfall'
 import { isFeatureEnabled } from '@/lib/features'
+import { calculateBuyPrice } from '@/lib/pricing'  // ← ADD THIS IMPORT
 
 interface CSVPreview {
   headers: string[]
@@ -37,6 +38,7 @@ export default function MTGCSVImporter() {
     quantity: '',
     setCode: '',
   })
+  
   if (!canImport) {
     return null // Don't render if feature is disabled
   }
@@ -149,9 +151,28 @@ export default function MTGCSVImporter() {
         const card = await getMTGCardByName(cardName)
         
         if (card) {
-          const price = parseFloat(card.prices.eur || card.prices.usd || '0')
-          const marketPrice = price > 0 ? price : 0.50
-          const buyPrice = marketPrice * 0.7
+          // Calculate market price
+          const eurPrice = card.prices?.eur
+          const usdPrice = card.prices?.usd
+          
+          let price = 0
+          if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
+            price = parseFloat(eurPrice)
+          } else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
+            price = parseFloat(usdPrice) * 0.92
+          }
+          
+          const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
+          
+          // ✅ USE NEW PRICING LOGIC
+          const buyPrice = calculateBuyPrice(marketPrice)
+          
+          console.log('MTG CSV Import:', {
+            card: card.name,
+            marketPrice,
+            buyPrice,
+            tier: marketPrice >= 3 ? '50%' : marketPrice >= 0.5 ? '10%' : '¼¢'
+          })
 
           addItem({
             id: `${card.id}-${card.set}-${Date.now()}-${Math.random()}`,
