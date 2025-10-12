@@ -9,6 +9,16 @@ import { getMTGCardByName, getCardImageUrl } from '@/lib/api/scryfall'
 import { isFeatureEnabled } from '@/lib/features'
 import { calculateBuyPrice } from '@/lib/pricing'  // ← ADD THIS IMPORT
 
+// TEST - Remove after debugging
+console.log('🧪 Testing pricing module on load...')
+try {
+  const testPrice = calculateBuyPrice(10)
+  console.log('✅ calculateBuyPrice(10) =', testPrice)
+  console.log('Expected: 5, Got:', testPrice, 'Match:', testPrice === 5)
+} catch (error) {
+  console.error('❌ Error testing calculateBuyPrice:', error)
+}
+
 interface CSVPreview {
   headers: string[]
   sampleRows: any[]
@@ -120,101 +130,113 @@ export default function MTGCSVImporter() {
   }
 
   const processCSV = async () => {
-    if (!columnMappings.cardName) {
-      alert(language === 'de'
-        ? 'Bitte wählen Sie eine Spalte für den Kartennamen aus.'
-        : 'Please select a column for card name.'
-      )
-      return
-    }
-
-    setIsProcessing(true)
-    let importedCount = 0
-    let skippedCount = 0
-
-    for (const row of rawData) {
-      const cardName = row[columnMappings.cardName]?.toString().trim()
-      const quantity = columnMappings.quantity 
-        ? parseInt(row[columnMappings.quantity]) || 1
-        : 1
-      const setCode = columnMappings.setCode
-        ? row[columnMappings.setCode]?.toString().trim().toLowerCase()
-        : ''
-
-      if (!cardName) {
-        skippedCount++
-        continue
-      }
-
-      try {
-        // Fetch card from Scryfall
-        const card = await getMTGCardByName(cardName)
-        
-        if (card) {
-          // Calculate market price
-          const eurPrice = card.prices?.eur
-          const usdPrice = card.prices?.usd
-          
-          let price = 0
-          if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
-            price = parseFloat(eurPrice)
-          } else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
-            price = parseFloat(usdPrice) * 0.92
-          }
-          
-          const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
-          
-          // ✅ USE NEW PRICING LOGIC
-          const buyPrice = calculateBuyPrice(marketPrice)
-          
-          console.log('MTG CSV Import:', {
-            card: card.name,
-            marketPrice,
-            buyPrice,
-            tier: marketPrice >= 3 ? '50%' : marketPrice >= 0.5 ? '10%' : '¼¢'
-          })
-
-          addItem({
-            id: `${card.id}-${card.set}-${Date.now()}-${Math.random()}`,
-            cardName: card.name,
-            setName: card.set_name,
-            setCode: card.set.toUpperCase(),
-            marketPrice: marketPrice,
-            buyPrice: buyPrice,
-            quantity: quantity,
-            imageUrl: getCardImageUrl(card),
-            tcg: 'Magic: The Gathering',
-          })
-
-          importedCount++
-        } else {
-          skippedCount++
-        }
-      } catch (error) {
-        console.error(`Error fetching card ${cardName}:`, error)
-        skippedCount++
-      }
-
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-
-    setIsProcessing(false)
-
-    const message = language === 'de'
-      ? `Erfolgreich ${importedCount} Karten importiert. ${skippedCount} übersprungen.`
-      : `Successfully imported ${importedCount} cards. ${skippedCount} skipped.`
-    
-    alert(message)
-    
-    setShowPreview(false)
-    setCSVPreview(null)
-    setRawData([])
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+  console.log('🟢 processCSV started')
+  
+  if (!columnMappings.cardName) {
+    alert(language === 'de'
+      ? 'Bitte wählen Sie eine Spalte für den Kartennamen aus.'
+      : 'Please select a column for card name.'
+    )
+    return
   }
+
+  setIsProcessing(true)
+  let importedCount = 0
+  let skippedCount = 0
+
+  console.log('📦 Processing', rawData.length, 'rows')
+
+  for (const row of rawData) {
+    const cardName = row[columnMappings.cardName]?.toString().trim()
+    const quantity = columnMappings.quantity 
+      ? parseInt(row[columnMappings.quantity]) || 1
+      : 1
+
+    console.log('🔵 Processing card:', cardName)
+
+    if (!cardName) {
+      skippedCount++
+      continue
+    }
+
+    try {
+      // Fetch card from Scryfall
+      const card = await getMTGCardByName(cardName)
+      
+      if (card) {
+        console.log('✅ Card found:', card.name)
+        
+        // Calculate market price
+        const eurPrice = card.prices?.eur
+        const usdPrice = card.prices?.usd
+        
+        console.log('💰 Prices from Scryfall:', { eurPrice, usdPrice })
+        
+        let price = 0
+        if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
+          price = parseFloat(eurPrice)
+        } else if (usdPrice && usdPrice !== 'null' && usdPrice !== null) {
+          price = parseFloat(usdPrice) * 0.92
+        }
+        
+        const marketPrice = isNaN(price) || price <= 0 ? 0.50 : price
+        
+        console.log('💵 Market Price:', marketPrice, 'Type:', typeof marketPrice)
+        
+        // Check if calculateBuyPrice exists
+        console.log('🔧 calculateBuyPrice exists?', typeof calculateBuyPrice)
+        
+        // Calculate buy price
+        const buyPrice = calculateBuyPrice(marketPrice)
+        
+        console.log('💸 Buy Price:', buyPrice, 'Type:', typeof buyPrice)
+        console.log('📊 Tier:', marketPrice >= 3 ? '50%' : marketPrice >= 0.5 ? '10%' : '¼¢')
+
+        addItem({
+          id: `${card.id}-${card.set}-${Date.now()}-${Math.random()}`,
+          cardName: card.name,
+          setName: card.set_name,
+          setCode: card.set.toUpperCase(),
+          marketPrice: marketPrice,
+          buyPrice: buyPrice,
+          quantity: quantity,
+          imageUrl: getCardImageUrl(card),
+          tcg: 'Magic: The Gathering',
+        })
+
+        importedCount++
+        console.log('✅ Added to list. Total:', importedCount)
+      } else {
+        console.log('❌ Card not found')
+        skippedCount++
+      }
+    } catch (error) {
+      console.error(`❌ Error fetching card ${cardName}:`, error)
+      skippedCount++
+    }
+
+    // Small delay to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+
+  setIsProcessing(false)
+
+  console.log('🏁 Import complete. Imported:', importedCount, 'Skipped:', skippedCount)
+
+  const message = language === 'de'
+    ? `Erfolgreich ${importedCount} Karten importiert. ${skippedCount} übersprungen.`
+    : `Successfully imported ${importedCount} cards. ${skippedCount} skipped.`
+  
+  alert(message)
+  
+  setShowPreview(false)
+  setCSVPreview(null)
+  setRawData([])
+  
+  if (fileInputRef.current) {
+    fileInputRef.current.value = ''
+  }
+}
 
   const cancelImport = () => {
     setShowPreview(false)
