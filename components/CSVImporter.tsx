@@ -119,88 +119,101 @@ export default function CSVImporter({ tcgName, cards }: CSVImporterProps) {
     })
   }
 
-  const processCSV = () => {
-    if (!columnMappings.cardName) {
-      alert(language === 'de'
-        ? 'Bitte wählen Sie eine Spalte für den Kartennamen aus.'
-        : 'Please select a column for card name.'
-      )
+ const processCSV = () => {
+  if (!columnMappings.cardName) {
+    alert(language === 'de'
+      ? 'Bitte wählen Sie eine Spalte für den Kartennamen aus.'
+      : 'Please select a column for card name.'
+    )
+    return
+  }
+
+  let importedCount = 0
+  let skippedCount = 0
+
+  rawData.forEach((row) => {
+    const cardName = row[columnMappings.cardName]?.toString().trim()
+    const quantity = columnMappings.quantity 
+      ? parseInt(row[columnMappings.quantity]) || 1
+      : 1
+    const setCode = columnMappings.setCode
+      ? row[columnMappings.setCode]?.toString().trim()
+      : ''
+
+    if (!cardName) {
+      skippedCount++
       return
     }
 
-    let importedCount = 0
-    let skippedCount = 0
+    // Try to find matching card in our data (fuzzy match)
+    const matchedCard = cards.find(
+      (card) =>
+        card.name.toLowerCase().includes(cardName.toLowerCase()) ||
+        cardName.toLowerCase().includes(card.name.toLowerCase()) ||
+        card.nameDE?.toLowerCase().includes(cardName.toLowerCase()) ||
+        cardName.toLowerCase().includes(card.nameDE?.toLowerCase())
+    )
 
-    rawData.forEach((row) => {
-      const cardName = row[columnMappings.cardName]?.toString().trim()
-      const quantity = columnMappings.quantity 
-        ? parseInt(row[columnMappings.quantity]) || 1
-        : 1
-      const setCode = columnMappings.setCode
-        ? row[columnMappings.setCode]?.toString().trim()
-        : ''
-
-      if (!cardName) {
-        skippedCount++
-        return
+    if (matchedCard) {
+      // Try to match set
+      let matchedSet = matchedCard.sets[0]
+      if (setCode) {
+        const foundSet = matchedCard.sets.find(
+          (s: any) => 
+            s.code.toLowerCase() === setCode.toLowerCase() ||
+            s.name.toLowerCase().includes(setCode.toLowerCase())
+        )
+        if (foundSet) matchedSet = foundSet
       }
 
-      // Try to find matching card in our data (fuzzy match)
-      const matchedCard = cards.find(
-        (card) =>
-          card.name.toLowerCase().includes(cardName.toLowerCase()) ||
-          cardName.toLowerCase().includes(card.name.toLowerCase()) ||
-          card.nameDE?.toLowerCase().includes(cardName.toLowerCase()) ||
-          cardName.toLowerCase().includes(card.nameDE?.toLowerCase())
-      )
+      // Ensure marketPrice exists and is valid
+      const marketPrice = matchedSet?.marketPrice ?? 0.50
+      
+      // Debug logging
+      console.log('CSV Import Debug:', {
+        cardName: matchedCard.name,
+        marketPrice: marketPrice,
+        marketPriceType: typeof marketPrice
+      })
 
-      if (matchedCard) {
-        // Try to match set
-        let matchedSet = matchedCard.sets[0]
-        if (setCode) {
-          const foundSet = matchedCard.sets.find(
-            (s: any) => 
-              s.code.toLowerCase() === setCode.toLowerCase() ||
-              s.name.toLowerCase().includes(setCode.toLowerCase())
-          )
-          if (foundSet) matchedSet = foundSet
-        }
+      // Calculate buy price using the new pricing logic
+      const buyPrice = calculateBuyPrice(marketPrice)
+      
+      console.log('Calculated buyPrice:', buyPrice)
 
-        // Calculate buy price using the new pricing logic
-        const buyPrice = calculateBuyPrice(matchedSet.marketPrice)
+      addItem({
+        id: `${matchedCard.id}-${matchedSet.code}-${Date.now()}-${Math.random()}`,
+        cardName: language === 'de' ? (matchedCard.nameDE || matchedCard.name) : matchedCard.name,
+        setName: language === 'de' ? (matchedSet.nameDE || matchedSet.name) : matchedSet.name,
+        setCode: matchedSet.code,
+        marketPrice: marketPrice,
+        buyPrice: buyPrice,
+        quantity: quantity,
+        imageUrl: matchedCard.imageUrl || '',
+        tcg: tcgName,
+      })
 
-        addItem({
-          id: `${matchedCard.id}-${matchedSet.code}-${Date.now()}-${Math.random()}`,
-          cardName: language === 'de' ? matchedCard.nameDE : matchedCard.name,
-          setName: language === 'de' ? matchedSet.nameDE : matchedSet.name,
-          setCode: matchedSet.code,
-          marketPrice: matchedSet.marketPrice,
-          buyPrice: buyPrice,
-          quantity: quantity,
-          imageUrl: matchedCard.imageUrl,
-          tcg: tcgName,
-        })
-
-        importedCount++
-      } else {
-        skippedCount++
-      }
-    })
-
-    const message = language === 'de'
-      ? `Erfolgreich ${importedCount} Karten importiert. ${skippedCount} übersprungen.`
-      : `Successfully imported ${importedCount} cards. ${skippedCount} skipped.`
-    
-    alert(message)
-    
-    setShowPreview(false)
-    setCSVPreview(null)
-    setRawData([])
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      importedCount++
+    } else {
+      console.log('Card not found:', cardName)
+      skippedCount++
     }
+  })
+
+  const message = language === 'de'
+    ? `Erfolgreich ${importedCount} Karten importiert. ${skippedCount} übersprungen.`
+    : `Successfully imported ${importedCount} cards. ${skippedCount} skipped.`
+  
+  alert(message)
+  
+  setShowPreview(false)
+  setCSVPreview(null)
+  setRawData([])
+  
+  if (fileInputRef.current) {
+    fileInputRef.current.value = ''
   }
+}
 
   const cancelImport = () => {
     setShowPreview(false)
