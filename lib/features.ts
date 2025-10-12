@@ -82,9 +82,9 @@ const DEFAULT_FEATURES: FeatureFlags = {
 // Get current plan from environment or default to PREMIUM
 function getCurrentPlan(): string {
   if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_PLAN || 'PREMIUM'
+    return process.env.NEXT_PUBLIC_PLAN || 'BASIC'
   }
-  return localStorage.getItem('currentPlan') || process.env.NEXT_PUBLIC_PLAN || 'PREMIUM'
+  return localStorage.getItem('currentPlan') || process.env.NEXT_PUBLIC_PLAN || 'BASIC'
 }
 
 // Get features for current plan
