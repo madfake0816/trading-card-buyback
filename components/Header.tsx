@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { User } from '@supabase/supabase-js'
+import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 import LanguageToggle from './LanguageToggle'
 
 export default function Header() {
@@ -11,46 +11,53 @@ export default function Header() {
   const [userName, setUserName] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [showDropdown, setShowDropdown] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)  // ← ADD THIS LINE
+  const [isAdmin, setIsAdmin] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
+    const loadUser = async () => {
+      const { data } = await supabase.auth.getSession()
+      const session: Session | null = data.session
+      setUser(session?.user ?? null)
+
+      if (session?.user) {
+        await loadUserProfile(session.user.id)
+      }
+
+      setLoading(false)
+    }
+
     loadUser()
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        loadUserProfile(session.user.id)
-      } else {
-        setUserName('')
-        setIsAdmin(false)  // ← ADD THIS LINE
+    } = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, session: Session | null) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          loadUserProfile(session.user.id)
+        } else {
+          setUserName('')
+          setIsAdmin(false)
+        }
       }
-    })
+    )
 
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const loadUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    setUser(session?.user ?? null)
-    
-    if (session?.user) {
-      await loadUserProfile(session.user.id)
+    return () => {
+      subscription.unsubscribe()
     }
-    
-    setLoading(false)
-  }
+  }, [supabase])
 
   const loadUserProfile = async (userId: string) => {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from('users')
-        .select('name, role')  // ← CHANGE THIS LINE (add role)
+        .select('name, role')
         .eq('id', userId)
         .single()
-      
+
+      if (error) throw error
+
       if (profile?.name) {
         setUserName(profile.name)
       } else {
@@ -58,15 +65,16 @@ export default function Header() {
         setUserName(email.split('@')[0])
       }
 
-      // ← ADD THESE LINES
-      // Check if user is admin/staff
       if (profile?.role && ['admin', 'owner', 'staff'].includes(profile.role)) {
         setIsAdmin(true)
+      } else {
+        setIsAdmin(false)
       }
     } catch (error) {
       console.error('Error loading profile:', error)
       const email = user?.email || ''
       setUserName(email.split('@')[0])
+      setIsAdmin(false)
     }
   }
 
@@ -75,8 +83,8 @@ export default function Header() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${currentPath}`
-      }
+        redirectTo: `${window.location.origin}/auth/callback?next=${currentPath}`,
+      },
     })
     if (error) {
       console.error('Sign in error:', error)
@@ -95,33 +103,35 @@ export default function Header() {
       <div className="container mx-auto px-4 py-3">
         <div className="flex justify-between items-center">
           {/* Logo */}
-          <Link href="/" className="text-2xl font-bold text-cyan-500 hover:text-cyan-400 transition-colors">
+          <Link
+            href="/"
+            className="text-2xl font-bold text-cyan-500 hover:text-cyan-400 transition-colors"
+          >
             CardFlow
           </Link>
 
-         {/* Navigation */}
-<nav className="hidden md:flex items-center gap-6">
-  <Link
-    href="/mtg"
-    className="text-gray-300 hover:text-cyan-400 transition-colors"
-  >
-    Browse Cards
-  </Link>
-  {user && (
-    <Link
-      href="/submissions"
-      className="text-gray-300 hover:text-cyan-400 transition-colors"
-    >
-      My Submissions
-    </Link>
-  )}
-</nav>
+          {/* Navigation */}
+          <nav className="hidden md:flex items-center gap-6">
+            <Link
+              href="/mtg"
+              className="text-gray-300 hover:text-cyan-400 transition-colors"
+            >
+              Browse Cards
+            </Link>
+            {user && (
+              <Link
+                href="/submissions"
+                className="text-gray-300 hover:text-cyan-400 transition-colors"
+              >
+                My Submissions
+              </Link>
+            )}
+          </nav>
 
           {/* Right Side: Language & Auth */}
           <div className="flex items-center gap-4">
             <LanguageToggle />
 
-            {/* Auth Section */}
             {loading ? (
               <div className="text-sm text-gray-400">...</div>
             ) : user ? (
@@ -140,19 +150,25 @@ export default function Header() {
                     </div>
                   </div>
                   <svg
-                    className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+                    className={`w-4 h-4 transition-transform ${
+                      showDropdown ? 'rotate-180' : ''
+                    }`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
                   </svg>
                 </button>
 
                 {/* Dropdown Menu */}
                 {showDropdown && (
                   <div className="absolute right-0 mt-2 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-lg py-2 z-50">
-                    {/* ← ADD THIS SECTION - Admin Link */}
                     {isAdmin && (
                       <>
                         <Link
@@ -165,8 +181,7 @@ export default function Header() {
                         <hr className="my-2 border-slate-700" />
                       </>
                     )}
-                    {/* ← END OF ADMIN SECTION */}
-                    
+
                     <Link
                       href="/profile"
                       className="block px-4 py-2 text-sm text-gray-300 hover:bg-slate-700 transition-colors"
@@ -192,12 +207,17 @@ export default function Header() {
                 )}
               </div>
             ) : (
-              // ← REPLACE THIS SECTION - Sign in/up buttons
               <div className="flex items-center gap-2">
-                <Link href="/auth/signin" className="btn-outline text-sm px-4 py-2">
+                <Link
+                  href="/auth/signin"
+                  className="btn-outline text-sm px-4 py-2"
+                >
                   Sign In
                 </Link>
-                <Link href="/auth/signup" className="btn-primary text-sm px-4 py-2">
+                <Link
+                  href="/auth/signup"
+                  className="btn-primary text-sm px-4 py-2"
+                >
                   Sign Up
                 </Link>
               </div>
@@ -205,29 +225,29 @@ export default function Header() {
           </div>
         </div>
 
- {/* Mobile Navigation */}
-<nav className="md:hidden flex gap-4 mt-3 pt-3 border-t border-slate-700">
-  <Link
-    href="/buylist"
-    className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
-  >
-    Buylist
-  </Link>
-  <Link
-    href="/mtg"
-    className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
-  >
-    Browse
-  </Link>
-  {user && (
-    <Link
-      href="/submissions"
-      className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
-    >
-      Submissions
-    </Link>
-  )}
-</nav>
+        {/* Mobile Navigation */}
+        <nav className="md:hidden flex gap-4 mt-3 pt-3 border-t border-slate-700">
+          <Link
+            href="/buylist"
+            className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
+          >
+            Buylist
+          </Link>
+          <Link
+            href="/mtg"
+            className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
+          >
+            Browse
+          </Link>
+          {user && (
+            <Link
+              href="/submissions"
+              className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
+            >
+              Submissions
+            </Link>
+          )}
+        </nav>
       </div>
     </header>
   )

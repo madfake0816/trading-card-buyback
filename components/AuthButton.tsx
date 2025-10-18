@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { User } from '@supabase/supabase-js'
+import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 
 export default function AuthButton({ inline = false }: { inline?: boolean }) {
   const [user, setUser] = useState<User | null>(null)
@@ -10,38 +10,44 @@ export default function AuthButton({ inline = false }: { inline?: boolean }) {
   const supabase = createClient()
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const fetchSession = async () => {
+      // Keine Destructuring-Bindung mit impliziten any
+      const { data: sessionData } = await supabase.auth.getSession()
+      const session: Session | null = sessionData.session
       setUser(session?.user ?? null)
       setLoading(false)
-    })
+    }
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
+    fetchSession()
 
-    return () => subscription.unsubscribe()
-  }, [])
+    // Explizite Typen für event + session
+    const authListener = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, session: Session | null) => {
+        setUser(session?.user ?? null)
+      }
+    )
+
+    // Kein verschachteltes Destructuring, so bleibt's typsicher
+    return () => {
+      authListener.data.subscription.unsubscribe()
+    }
+  }, [supabase])
 
   const handleSignIn = async () => {
-  // Remember current page
-  const currentPath = window.location.pathname
-  
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback?next=${currentPath}`
+    const currentPath = window.location.pathname
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${currentPath}`,
+      },
+    })
+
+    if (error) {
+      console.error('Sign in error:', error)
+      alert('Sign in failed. Please try again.')
     }
-  })
-  
-  if (error) {
-    console.error('Sign in error:', error)
-    alert('Sign in failed. Please try again.')
   }
-}
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
