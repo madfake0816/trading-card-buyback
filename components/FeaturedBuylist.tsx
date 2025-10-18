@@ -152,18 +152,18 @@ export default function FeaturedBuylist() {
   }
 
   // Get visible cards with wrapping
-  const getVisibleCards = () => {
-    if (cards.length <= cardsPerView) {
-      return cards
-    }
-
-    const visible = []
-    for (let i = 0; i < cardsPerView; i++) {
-      const index = (currentIndex + i) % cards.length
-      visible.push(cards[index])
-    }
-    return visible
+const getVisibleCards = (): FeaturedCard[] => {
+  if (cards.length <= cardsPerView) {
+    return cards
   }
+
+  const visible: FeaturedCard[] = []  // Add explicit type here
+  for (let i = 0; i < cardsPerView; i++) {
+    const index = (currentIndex + i) % cards.length
+    visible.push(cards[index])
+  }
+  return visible
+}
 
   const visibleCards = getVisibleCards()
 
