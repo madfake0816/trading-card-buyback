@@ -43,10 +43,41 @@ interface AnalyticsData {
   }
 }
 
+/** ---- Lokale, pragmatische Typen (nur Felder, die wir nutzen) ---- */
+type Submission = {
+  id: string
+  total_cards: number | null
+  total_market_value: number | string | null
+  total_buy_price: number | string | null
+  status: 'pending' | 'accepted' | 'rejected' | 'paid' | string
+  payment_method?: string | null
+  created_at: string
+  users?: {
+    email?: string | null
+    name?: string | null
+  } | null
+}
+
+type SubmissionCard = {
+  submission_id: string
+  card_name: string
+  set_name: string
+  quantity: number
+  market_price: number | string
+  buy_price: number | string
+}
+
+/** Hilfsfunktion: sicher in Zahl umwandeln */
+const num = (v: unknown, fallback = 0): number => {
+  if (typeof v === 'number' && !Number.isNaN(v)) return v
+  if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v)
+  return fallback
+}
+
 export default function AdminAnalytics() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [dateRange, setDateRange] = useState('30d')
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all' | 'custom'>('30d')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const router = useRouter()
@@ -54,17 +85,20 @@ export default function AdminAnalytics() {
 
   useEffect(() => {
     checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (!loading) {
-      loadAnalytics()
+      // Fehler hier früher: loadAnalytics wurde bei loading=true getriggert
+      // Jetzt sicher: nur starten, wenn loading === false
+      void loadAnalytics()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange, loading])
 
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    
     if (!user) {
       router.push('/auth/signin')
       return
@@ -76,7 +110,7 @@ export default function AdminAnalytics() {
       .eq('id', user.id)
       .single()
 
-    if (!profile || !['admin', 'owner', 'staff'].includes(profile.role)) {
+    if (!profile || !['admin', 'owner', 'staff'].includes((profile as any).role)) {
       alert('Access denied')
       router.push('/admin')
       return
@@ -87,9 +121,8 @@ export default function AdminAnalytics() {
 
   const loadAnalytics = async () => {
     try {
-      // Calculate date range
+      // --- Datumsbereich berechnen ---
       let queryStartDate = new Date()
-      
       if (dateRange === '7d') {
         queryStartDate.setDate(queryStartDate.getDate() - 7)
       } else if (dateRange === '30d') {
@@ -98,14 +131,14 @@ export default function AdminAnalytics() {
         queryStartDate.setDate(queryStartDate.getDate() - 90)
       } else if (dateRange === 'custom' && startDate) {
         queryStartDate = new Date(startDate)
-      } else {
-        queryStartDate.setFullYear(queryStartDate.getFullYear() - 10) // All time
+      } else if (dateRange === 'all') {
+        queryStartDate.setFullYear(queryStartDate.getFullYear() - 10)
       }
 
       const queryEndDate = dateRange === 'custom' && endDate ? new Date(endDate) : new Date()
 
-      // Fetch submissions
-      const { data: submissions, error: submissionsError } = await supabase
+      // --- Submissions laden (ohne Generics; nachher typisieren) ---
+      const { data: submissionsRaw, error: submissionsError } = await supabase
         .from('submissions')
         .select(`
           *,
@@ -119,44 +152,79 @@ export default function AdminAnalytics() {
 
       if (submissionsError) throw submissionsError
 
-      // Fetch submission cards
-      const { data: cards, error: cardsError } = await supabase
-        .from('submission_cards')
-        .select('*')
-        .in('submission_id', submissions?.map(s => s.id) || [])
+      const submissions: Submission[] = (submissionsRaw ?? []) as Submission[]
 
-      if (cardsError) throw cardsError
-
-      // Calculate analytics
-      const totalSubmissions = submissions?.length || 0
-      const totalCards = submissions?.reduce((sum, s) => sum + s.total_cards, 0) || 0
-      const totalMarketValue = submissions?.reduce((sum, s) => sum + parseFloat(s.total_market_value.toString()), 0) || 0
-      const totalBuyPrice = submissions?.reduce((sum, s) => sum + parseFloat(s.total_buy_price.toString()), 0) || 0
-
-      // Submissions by status
-      const submissionsByStatus = {
-        pending: submissions?.filter(s => s.status === 'pending').length || 0,
-        accepted: submissions?.filter(s => s.status === 'accepted').length || 0,
-        rejected: submissions?.filter(s => s.status === 'rejected').length || 0,
-        paid: submissions?.filter(s => s.status === 'paid').length || 0,
+      // --- Falls keine Submissions: Direkt leeres Analytics-Objekt setzen ---
+      if (!submissions.length) {
+        setAnalytics({
+          totalSubmissions: 0,
+          totalCards: 0,
+          totalMarketValue: 0,
+          totalBuyPrice: 0,
+          averageBuyPrice: 0,
+          submissionsByStatus: { pending: 0, accepted: 0, rejected: 0, paid: 0 },
+          submissionsByPaymentMethod: {},
+          recentActivity: [],
+          topCustomers: [],
+          cardStats: {
+            totalUnique: 0,
+            mostCommonSets: [],
+            averageMarketPrice: 0,
+            averageBuyPrice: 0,
+          },
+        })
+        return
       }
 
-      // Submissions by payment method
+      const submissionIds = submissions.map((s) => s.id)
+
+      // --- Cards nur laden, wenn IDs vorhanden sind (sonst .in([])-Fehler) ---
+      let cards: SubmissionCard[] = []
+      if (submissionIds.length > 0) {
+        const { data: cardsRaw, error: cardsError } = await supabase
+          .from('submission_cards')
+          .select('*')
+          .in('submission_id', submissionIds)
+
+        if (cardsError) throw cardsError
+        cards = (cardsRaw ?? []) as SubmissionCard[]
+      }
+
+      // --- Kennzahlen berechnen ---
+      const totalSubmissions = submissions.length
+      const totalCards = submissions.reduce((sum, s) => sum + num(s.total_cards), 0)
+
+      const totalMarketValue = submissions.reduce(
+        (sum, s) => sum + num(s.total_market_value),
+        0
+      )
+      const totalBuyPrice = submissions.reduce(
+        (sum, s) => sum + num(s.total_buy_price),
+        0
+      )
+
+      const submissionsByStatus = {
+        pending: submissions.filter((s) => s.status === 'pending').length,
+        accepted: submissions.filter((s) => s.status === 'accepted').length,
+        rejected: submissions.filter((s) => s.status === 'rejected').length,
+        paid: submissions.filter((s) => s.status === 'paid').length,
+      }
+
       const submissionsByPaymentMethod: { [key: string]: number } = {}
-      submissions?.forEach(s => {
-        const method = s.payment_method || 'unknown'
+      submissions.forEach((s) => {
+        const method = (s.payment_method ?? 'unknown').toString()
         submissionsByPaymentMethod[method] = (submissionsByPaymentMethod[method] || 0) + 1
       })
 
-      // Recent activity (group by date)
-      const activityMap = new Map<string, { submissions: number, cards: number, value: number }>()
-      submissions?.forEach(s => {
-        const date = new Date(s.created_at).toLocaleDateString()
-        const existing = activityMap.get(date) || { submissions: 0, cards: 0, value: 0 }
-        activityMap.set(date, {
-          submissions: existing.submissions + 1,
-          cards: existing.cards + s.total_cards,
-          value: existing.value + parseFloat(s.total_buy_price.toString())
+      // Recent activity (per Datum gruppieren)
+      const activityMap = new Map<string, { submissions: number; cards: number; value: number }>()
+      submissions.forEach((s) => {
+        const dateKey = new Date(s.created_at).toLocaleDateString()
+        const prev = activityMap.get(dateKey) ?? { submissions: 0, cards: 0, value: 0 }
+        activityMap.set(dateKey, {
+          submissions: prev.submissions + 1,
+          cards: prev.cards + num(s.total_cards),
+          value: prev.value + num(s.total_buy_price),
         })
       })
 
@@ -166,15 +234,18 @@ export default function AdminAnalytics() {
         .slice(0, 14)
 
       // Top customers
-      const customerMap = new Map<string, { email: string, name: string, submissions: number, totalValue: number }>()
-      submissions?.forEach(s => {
-        const email = s.users?.email || 'unknown'
-        const name = s.users?.name || 'Unknown'
-        const existing = customerMap.get(email) || { email, name, submissions: 0, totalValue: 0 }
+      const customerMap = new Map<
+        string,
+        { email: string; name: string; submissions: number; totalValue: number }
+      >()
+      submissions.forEach((s) => {
+        const email = s.users?.email ?? 'unknown'
+        const name = s.users?.name ?? 'Unknown'
+        const prev = customerMap.get(email) ?? { email, name, submissions: 0, totalValue: 0 }
         customerMap.set(email, {
-          ...existing,
-          submissions: existing.submissions + 1,
-          totalValue: existing.totalValue + parseFloat(s.total_buy_price.toString())
+          ...prev,
+          submissions: prev.submissions + 1,
+          totalValue: prev.totalValue + num(s.total_buy_price),
         })
       })
 
@@ -182,10 +253,10 @@ export default function AdminAnalytics() {
         .sort((a, b) => b.totalValue - a.totalValue)
         .slice(0, 10)
 
-      // Card stats
-      const uniqueCards = new Set(cards?.map(c => c.card_name))
+      // Card-Stats
+      const uniqueCards = new Set(cards.map((c) => c.card_name))
       const setCount = new Map<string, number>()
-      cards?.forEach(c => {
+      cards.forEach((c) => {
         setCount.set(c.set_name, (setCount.get(c.set_name) || 0) + c.quantity)
       })
 
@@ -194,9 +265,15 @@ export default function AdminAnalytics() {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10)
 
-      const totalCardMarketPrice = cards?.reduce((sum, c) => sum + (parseFloat(c.market_price.toString()) * c.quantity), 0) || 0
-      const totalCardBuyPrice = cards?.reduce((sum, c) => sum + (parseFloat(c.buy_price.toString()) * c.quantity), 0) || 0
-      const totalCardCount = cards?.reduce((sum, c) => sum + c.quantity, 0) || 1
+      const totalCardMarketPrice = cards.reduce(
+        (sum, c) => sum + num(c.market_price) * c.quantity,
+        0
+      )
+      const totalCardBuyPrice = cards.reduce(
+        (sum, c) => sum + num(c.buy_price) * c.quantity,
+        0
+      )
+      const totalCardCount = cards.reduce((sum, c) => sum + c.quantity, 0) || 1
 
       setAnalytics({
         totalSubmissions,
@@ -213,9 +290,8 @@ export default function AdminAnalytics() {
           mostCommonSets,
           averageMarketPrice: totalCardMarketPrice / totalCardCount,
           averageBuyPrice: totalCardBuyPrice / totalCardCount,
-        }
+        },
       })
-
     } catch (error) {
       console.error('Error loading analytics:', error)
       alert('Failed to load analytics')
@@ -284,7 +360,7 @@ export default function AdminAnalytics() {
         <div className="card p-4 mb-6">
           <div className="flex flex-wrap gap-4 items-end">
             <div className="flex gap-2">
-              {['7d', '30d', '90d', 'all', 'custom'].map((range) => (
+              {(['7d', '30d', '90d', 'all', 'custom'] as const).map((range) => (
                 <button
                   key={range}
                   onClick={() => setDateRange(range)}
@@ -302,7 +378,7 @@ export default function AdminAnalytics() {
                 </button>
               ))}
             </div>
-            
+
             {dateRange === 'custom' && (
               <div className="flex gap-3">
                 <div>
@@ -337,19 +413,19 @@ export default function AdminAnalytics() {
             <div className="text-3xl font-bold text-cyan-500">{analytics.totalSubmissions}</div>
             <div className="text-sm text-gray-400 mt-2">Total Submissions</div>
           </div>
-          
+
           <div className="card p-6">
             <div className="text-3xl font-bold text-emerald-500">{analytics.totalCards}</div>
             <div className="text-sm text-gray-400 mt-2">Total Cards</div>
           </div>
-          
+
           <div className="card p-6">
             <div className="text-3xl font-bold text-blue-500">
               €{analytics.totalMarketValue.toFixed(2)}
             </div>
             <div className="text-sm text-gray-400 mt-2">Total Market Value</div>
           </div>
-          
+
           <div className="card p-6">
             <div className="text-3xl font-bold text-purple-500">
               €{analytics.totalBuyPrice.toFixed(2)}
@@ -366,14 +442,14 @@ export default function AdminAnalytics() {
             </div>
             <div className="text-sm text-gray-400 mt-2">Avg. Buy Price per Submission</div>
           </div>
-          
+
           <div className="card p-6">
             <div className="text-2xl font-bold text-emerald-500">
               {analytics.cardStats.totalUnique}
             </div>
             <div className="text-sm text-gray-400 mt-2">Unique Cards</div>
           </div>
-          
+
           <div className="card p-6">
             <div className="text-2xl font-bold text-blue-500">
               €{analytics.cardStats.averageBuyPrice.toFixed(2)}
@@ -419,7 +495,9 @@ export default function AdminAnalytics() {
           <div className="space-y-3">
             {Object.entries(analytics.submissionsByPaymentMethod).map(([method, count]) => (
               <div key={method} className="flex items-center justify-between bg-slate-800 p-4 rounded-lg">
-                <span className="font-semibold capitalize">{method.replace('_', ' ')}</span>
+                <span className="font-semibold capitalize">
+                  {method.includes('_') ? method.replace(/_/g, ' ') : method}
+                </span>
                 <span className="text-cyan-500 font-bold">{count} submissions</span>
               </div>
             ))}
@@ -490,7 +568,7 @@ export default function AdminAnalytics() {
           <h2 className="text-2xl font-bold text-cyan-500 mb-4">Most Common Sets</h2>
           <div className="space-y-3">
             {analytics.cardStats.mostCommonSets.map((set, index) => (
-              <div key={set.set_name} className="flex items-center justify-between bg-slate-800 p-4 rounded-lg">
+              <div key={`${set.set_name}-${index}`} className="flex items-center justify-between bg-slate-800 p-4 rounded-lg">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl font-bold text-gray-600">#{index + 1}</span>
                   <span className="font-semibold">{set.set_name}</span>
