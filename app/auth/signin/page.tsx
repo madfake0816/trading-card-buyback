@@ -27,7 +27,7 @@ export default function SignInPage() {
       if (error) throw error
 
       console.log('✅ Signed in:', data.user?.email)
-      router.push('/dashboard')
+      router.push('/')
     } catch (error: any) {
       console.error('Sign in error:', error)
       setError(error.message)
@@ -40,7 +40,7 @@ export default function SignInPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`
+        redirectTo: `${window.location.origin}/auth/callback?next=/`
       }
     })
     
