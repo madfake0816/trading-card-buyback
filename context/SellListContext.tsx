@@ -8,7 +8,7 @@ export interface SellListItem {
   cardName: string
   setCode: string
   setName: string
-  collectorNumber: string
+  collectorNumber?: string
   condition: string
   language: string
   foil: boolean

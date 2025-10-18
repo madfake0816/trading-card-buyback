@@ -27,6 +27,7 @@ interface GroupedCard {
   }>
   imageUrl: string
   regularImageCard?: ScryfallCard
+  collectorNumber?: string
 }
 
 function MTGPageContent() {
@@ -376,17 +377,23 @@ const handleSelectCard = async (card: GroupedCard) => {
       ? getCardDisplayName(currentCardData, true)
       : selectedCard.name
 
-    addItem({
-      id: `${selectedCard.name}-${selectedSet.code}-${Date.now()}`,
-      cardName: displayName,
-      setName: selectedSet.name,
-      setCode: selectedSet.code,
-      marketPrice: selectedSet.marketPrice,
-      buyPrice: buyPrice,
-      quantity: quantity,
-      imageUrl: currentCardImage,
-      tcg: 'Magic: The Gathering',
-    })
+addItem({
+  id: `${selectedCard.name}-${selectedSet.code}-${Date.now()}`,
+  cardName: displayName,
+  setName: selectedSet.name,
+  setCode: selectedSet.code,
+  marketPrice: selectedSet.marketPrice,
+  buyPrice: buyPrice,
+  quantity: quantity,
+  imageUrl: currentCardImage,
+  tcg: 'Magic: The Gathering',
+
+  // ✅ Neue Pflichtfelder aus SellListItem:
+  collectorNumber: selectedCard.collectorNumber ?? '', // falls nicht vorhanden
+  condition: 'NM', // Beispiel: Near Mint
+  language: 'English',
+  foil: false,
+})
 
     const message = language === 'de'
       ? `${quantity}x ${displayName} zur Verkaufsliste hinzugefügt!`
