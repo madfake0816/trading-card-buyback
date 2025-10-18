@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { LanguageProvider, useLanguage } from '@/context/LanguageContext'
-import { SellListProvider, useSellListStore } from '@/context/SellListContext'
 import LanguageToggle from '@/components/LanguageToggle'
 import SellList from '@/components/SellList'
 import SafeImage from '@/components/SafeImage'
@@ -14,6 +13,7 @@ import { searchMTGCards, getMTGCardPrints, getCardInLanguage, ScryfallCard, getC
 import { isFeatureEnabled } from '@/lib/features'
 import MoxfieldImporter from '@/components/MoxfieldImporter'
 import { calculateBuyPrice, getPricingExplanation } from '@/lib/pricing'
+import { useSellListStore } from '@/context/SellListContext'
 
 interface GroupedCard {
   name: string
@@ -99,24 +99,24 @@ function MTGPageContent() {
   }
 
   setIsLoading(true)
+  console.log('🔍 Searching for:', query)
+  
   try {
-    // Search in English first
+    // Search in both English and German
     const englishResults = await searchMTGCards(query, 'en')
     console.log('📦 English results:', englishResults.length)
     
-    // If user is searching in German, also search German cards
     let allResults = [...englishResults]
     
-    // Try German search if the English search returned few/no results
-    if (language === 'de' || englishResults.length < 5) {
-      console.log('🇩🇪 Trying German search...')
+    // Also try German search
+    if (language === 'de' || englishResults.length < 10) {
+      console.log('🇩🇪 Also searching in German...')
       const germanResults = await searchMTGCards(query, 'de')
       console.log('📦 German results:', germanResults.length)
       
-      // For each German card, find its English equivalent for pricing
+      // For each German card, get English version for pricing
       for (const germanCard of germanResults) {
         try {
-          // Fetch the English version of this card for pricing
           const englishVersion = await getCardInLanguage(
             germanCard.set,
             germanCard.collector_number,
@@ -124,56 +124,25 @@ function MTGPageContent() {
           )
           
           if (englishVersion) {
-            // Check if we already have this card from English search
-            const alreadyHave = allResults.find(
+            const alreadyExists = allResults.find(
               r => r.set === englishVersion.set && 
                    r.collector_number === englishVersion.collector_number
             )
             
-            if (!alreadyHave) {
+            if (!alreadyExists) {
               allResults.push(englishVersion)
             }
           }
         } catch (error) {
-          console.log('⚠️ Could not fetch English version for:', germanCard.set, germanCard.collector_number)
+          console.log('⚠️ Could not fetch English version for:', germanCard.name)
         }
       }
     }
     
-    console.log('📦 Total results after combining:', allResults.length)
+    console.log('📦 Total combined results:', allResults.length)
     
-    // Filter cards with prices (including foil)
-    const resultsWithPrices = allResults.filter(card => {
-      const eurPrice = card.prices?.eur
-      const usdPrice = card.prices?.usd
-      const eurFoil = card.prices?.eur_foil
-      const usdFoil = card.prices?.usd_foil
-      
-      const hasValidEur = eurPrice && eurPrice !== null && eurPrice !== 'null' && !isNaN(parseFloat(eurPrice)) && parseFloat(eurPrice) > 0
-      const hasValidUsd = usdPrice && usdPrice !== null && usdPrice !== 'null' && !isNaN(parseFloat(usdPrice)) && parseFloat(usdPrice) > 0
-      const hasValidEurFoil = eurFoil && eurFoil !== null && eurFoil !== 'null' && !isNaN(parseFloat(eurFoil)) && parseFloat(eurFoil) > 0
-      const hasValidUsdFoil = usdFoil && usdFoil !== null && usdFoil !== 'null' && !isNaN(parseFloat(usdFoil)) && parseFloat(usdFoil) > 0
-      
-      if (!hasValidEur && !hasValidUsd && !hasValidEurFoil && !hasValidUsdFoil) {
-        console.log('❌ Filtered (no price):', card.set, card.collector_number)
-      }
-      
-      return hasValidEur || hasValidUsd || hasValidEurFoil || hasValidUsdFoil
-    })
-    
-    console.log('💰 Cards with prices:', resultsWithPrices.length)
-    
-    if (resultsWithPrices.length === 0) {
-      alert(language === 'de'
-        ? 'Keine Karten mit Preisen gefunden.'
-        : 'No cards with pricing found.'
-      )
-      setSearchResults([])
-      setIsLoading(false)
-      return
-    }
-    
-    const grouped = resultsWithPrices.reduce((acc: { [key: string]: GroupedCard }, card: ScryfallCard) => {
+    // Group cards by name (don't filter by price yet)
+    const grouped = allResults.reduce((acc: { [key: string]: GroupedCard }, card: ScryfallCard) => {
       const cardName = card.name.split(' // ')[0].trim()
       
       if (!acc[cardName]) {
@@ -185,96 +154,48 @@ function MTGPageContent() {
         }
       }
       
-      // Try all price options
-      const eurPrice = card.prices?.eur
-      const usdPrice = card.prices?.usd
-      const eurFoil = card.prices?.eur_foil
-      const usdFoil = card.prices?.usd_foil
-      
-      let price = 0
-      let priceSource = ''
-      
-      if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
-        const parsed = parseFloat(eurPrice)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed
-          priceSource = 'EUR'
-        }
-      }
-      
-      if (price === 0 && usdPrice && usdPrice !== 'null' && usdPrice !== null) {
-        const parsed = parseFloat(usdPrice)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed * 0.85
-          priceSource = 'USD'
-        }
-      }
-      
-      if (price === 0 && eurFoil && eurFoil !== 'null' && eurFoil !== null) {
-        const parsed = parseFloat(eurFoil)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed
-          priceSource = 'EUR Foil'
-        }
-      }
-      
-      if (price === 0 && usdFoil && usdFoil !== 'null' && usdFoil !== null) {
-        const parsed = parseFloat(usdFoil)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed * 0.85
-          priceSource = 'USD Foil'
-        }
-      }
-      
-      console.log(`💰 ${card.set} #${card.collector_number}: ${priceSource} €${price.toFixed(2)}`)
-      
-      if (price === 0) {
-        return acc
-      }
-      
-      const marketPrice = price
-      
-      const existingSet = acc[cardName].sets.find(
-        s => s.code === card.set.toUpperCase() && 
-             s.cardData.collector_number === card.collector_number
+      // Check if this card has ANY price
+      const hasPrice = (
+        (card.prices?.eur && parseFloat(card.prices.eur) > 0) ||
+        (card.prices?.usd && parseFloat(card.prices.usd) > 0) ||
+        (card.prices?.eur_foil && parseFloat(card.prices.eur_foil) > 0) ||
+        (card.prices?.usd_foil && parseFloat(card.prices.usd_foil) > 0)
       )
       
-      if (!existingSet) {
+      // Add to sets list even if no price (we'll check all prints later)
+      if (hasPrice || acc[cardName].sets.length === 0) {
+        const price = parseFloat(card.prices?.eur || card.prices?.usd || '0')
+        
         acc[cardName].sets.push({
           code: card.set.toUpperCase(),
           name: card.set_name,
-          marketPrice: marketPrice,
+          marketPrice: price,
           cardData: card,
         })
-      }
-      
-      if (card.finishes?.includes('nonfoil') && !card.promo) {
-        acc[cardName].imageUrl = getCardImageUrl(card)
       }
       
       return acc
     }, {})
     
-    const groupedArray = Object.values(grouped).sort((a, b) => 
-      a.displayName.localeCompare(b.displayName)
-    )
+    const groupedArray = Object.values(grouped)
+    console.log('📊 Grouped cards:', groupedArray.length)
     
-    console.log('📊 Final grouped cards:', groupedArray.length)
-    
-    groupedArray.forEach(card => {
-      card.sets.sort((a, b) => b.marketPrice - a.marketPrice)
-    })
-    
+    // Show all cards (we'll check for prices when they click)
     setSearchResults(groupedArray)
+    
   } catch (error) {
     console.error('❌ Search error:', error)
+    alert(language === 'de' 
+      ? 'Suchfehler. Bitte versuchen Sie es erneut.'
+      : 'Search error. Please try again.')
     setSearchResults([])
   } finally {
     setIsLoading(false)
   }
 }
 
- const handleSelectCard = async (card: GroupedCard) => {
+const handleSelectCard = async (card: GroupedCard) => {
+  console.log('🎯 Selected card:', card.name)
   setSelectedCard(card)
   setSelectedSet(null)
   setCurrentCardImage(card.imageUrl)
@@ -282,33 +203,53 @@ function MTGPageContent() {
   
   setIsLoadingSets(true)
   try {
+    // Fetch ALL prints of this card
     const allPrints = await getMTGCardPrints(card.name, 'en')
     
-    console.log('📦 All prints fetched:', allPrints.length)
+    console.log('📦 Total prints fetched:', allPrints.length)
     
-    // Check for ANY price including foil
+    // Debug: Log first few prints to see what we're working with
+    allPrints.slice(0, 3).forEach(print => {
+      console.log(`💳 ${print.set} #${print.collector_number}:`, {
+        eur: print.prices?.eur,
+        usd: print.prices?.usd,
+        eur_foil: print.prices?.eur_foil,
+        usd_foil: print.prices?.usd_foil,
+      })
+    })
+    
+    // Check for ANY valid price (including foil)
     const printsWithPrices = allPrints.filter(print => {
       const eurPrice = print.prices?.eur
       const usdPrice = print.prices?.usd
       const eurFoil = print.prices?.eur_foil
       const usdFoil = print.prices?.usd_foil
       
-      const hasValidEur = eurPrice && eurPrice !== null && eurPrice !== 'null' && !isNaN(parseFloat(eurPrice)) && parseFloat(eurPrice) > 0
-      const hasValidUsd = usdPrice && usdPrice !== null && usdPrice !== 'null' && !isNaN(parseFloat(usdPrice)) && parseFloat(usdPrice) > 0
-      const hasValidEurFoil = eurFoil && eurFoil !== null && eurFoil !== 'null' && !isNaN(parseFloat(eurFoil)) && parseFloat(eurFoil) > 0
-      const hasValidUsdFoil = usdFoil && usdFoil !== null && usdFoil !== 'null' && !isNaN(parseFloat(usdFoil)) && parseFloat(usdFoil) > 0
+      const hasValidEur = eurPrice && eurPrice !== 'null' && eurPrice !== null && parseFloat(eurPrice) > 0
+      const hasValidUsd = usdPrice && usdPrice !== 'null' && usdPrice !== null && parseFloat(usdPrice) > 0
+      const hasValidEurFoil = eurFoil && eurFoil !== 'null' && eurFoil !== null && parseFloat(eurFoil) > 0
+      const hasValidUsdFoil = usdFoil && usdFoil !== 'null' && usdFoil !== null && parseFloat(usdFoil) > 0
       
-      return hasValidEur || hasValidUsd || hasValidEurFoil || hasValidUsdFoil
+      const hasAnyPrice = hasValidEur || hasValidUsd || hasValidEurFoil || hasValidUsdFoil
+      
+      if (!hasAnyPrice) {
+        console.log(`❌ Filtered ${print.set} #${print.collector_number}: no valid prices`)
+      }
+      
+      return hasAnyPrice
     })
     
-    console.log('💰 Prints with prices:', printsWithPrices.length)
+    console.log('💰 Prints with valid prices:', printsWithPrices.length)
     
     if (printsWithPrices.length === 0) {
-      alert(language === 'de' ? 'Keine Preise verfügbar.' : 'No pricing available.')
+      alert(language === 'de' 
+        ? `Keine Preise für ${card.name} verfügbar. Dieser Karte kann derzeit nicht gekauft werden.`
+        : `No pricing available for ${card.name}. We cannot buy this card at this time.`)
       setIsLoadingSets(false)
       return
     }
     
+    // Process all prints with prices
     const allSets = printsWithPrices.map((print: ScryfallCard) => {
       const eurPrice = print.prices?.eur
       const usdPrice = print.prices?.usd
@@ -318,54 +259,32 @@ function MTGPageContent() {
       let price = 0
       let priceSource = ''
       
-      // Try EUR non-foil
-      if (eurPrice && eurPrice !== 'null' && eurPrice !== null) {
-        const parsed = parseFloat(eurPrice)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed
-          priceSource = 'EUR'
-        }
+      // Priority: EUR > USD > EUR Foil > USD Foil
+      if (eurPrice && parseFloat(eurPrice) > 0) {
+        price = parseFloat(eurPrice)
+        priceSource = 'EUR'
+      } else if (usdPrice && parseFloat(usdPrice) > 0) {
+        price = parseFloat(usdPrice) * 0.85 // Convert USD to EUR
+        priceSource = 'USD'
+      } else if (eurFoil && parseFloat(eurFoil) > 0) {
+        price = parseFloat(eurFoil)
+        priceSource = 'EUR Foil'
+      } else if (usdFoil && parseFloat(usdFoil) > 0) {
+        price = parseFloat(usdFoil) * 0.85
+        priceSource = 'USD Foil'
       }
       
-      // Try USD non-foil
-      if (price === 0 && usdPrice && usdPrice !== 'null' && usdPrice !== null) {
-        const parsed = parseFloat(usdPrice)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed * 0.85
-          priceSource = 'USD'
-        }
-      }
-      
-      // Try EUR foil
-      if (price === 0 && eurFoil && eurFoil !== 'null' && eurFoil !== null) {
-        const parsed = parseFloat(eurFoil)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed
-          priceSource = 'EUR Foil'
-        }
-      }
-      
-      // Try USD foil
-      if (price === 0 && usdFoil && usdFoil !== 'null' && usdFoil !== null) {
-        const parsed = parseFloat(usdFoil)
-        if (!isNaN(parsed) && parsed > 0) {
-          price = parsed * 0.85
-          priceSource = 'USD Foil'
-        }
-      }
-      
-      console.log(`💰 ${print.set} #${print.collector_number}: ${priceSource} €${price.toFixed(2)}`)
-      
-      const marketPrice = price > 0 ? price : 0.50
+      console.log(`💰 ${print.set} #${print.collector_number}: €${price.toFixed(2)} (${priceSource})`)
       
       return {
         code: print.set.toUpperCase(),
         name: print.set_name,
-        marketPrice: marketPrice,
+        marketPrice: price,
         cardData: print,
       }
-    }).filter(set => set.marketPrice >= 0.50)
+    })
     
+    // Remove duplicates (same set + collector number)
     const uniqueSets = allSets.filter((set, index, self) =>
       index === self.findIndex((s) => 
         s.code === set.code && 
@@ -373,21 +292,27 @@ function MTGPageContent() {
       )
     )
     
-    console.log(`✅ Total unique sets: ${uniqueSets.length}`)
+    console.log(`✅ Unique sets with prices: ${uniqueSets.length}`)
     
+    // Sort by price (highest first)
     uniqueSets.sort((a, b) => b.marketPrice - a.marketPrice)
     
+    // Update the selected card with all available sets
     setSelectedCard({
       ...card,
       sets: uniqueSets,
     })
     
+    // Load the first (highest value) set
     if (uniqueSets.length > 0) {
-      console.log('🎯 Loading first set:', uniqueSets[0].code, 'Price:', uniqueSets[0].marketPrice)
+      console.log('🎯 Auto-loading highest value set:', uniqueSets[0].code, '€' + uniqueSets[0].marketPrice.toFixed(2))
       await loadSetData(uniqueSets[0], card.name)
     }
   } catch (error) {
-    console.error('❌ Error:', error)
+    console.error('❌ Error loading card prints:', error)
+    alert(language === 'de' 
+      ? 'Fehler beim Laden der Kartenversionen'
+      : 'Error loading card versions')
   } finally {
     setIsLoadingSets(false)
   }
@@ -491,35 +416,7 @@ function MTGPageContent() {
 
   return (
     <div className="min-h-screen bg-dark-blue">
-      <header className="bg-dark-blue-light border-b border-yellow-accent">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 md:py-6">
-          <div className="flex justify-between items-center gap-2 mb-3 sm:mb-4">
-            <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
-              <Link href="/">
-                <img 
-                  src='/SaltyCards-logo.jpg'
-                  alt="Logo" 
-                  className="w-10 h-10 sm:w-12 sm:h-12 cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0"
-                />
-              </Link>
-              <div className="min-w-0">
-                <Link href="/" className="text-yellow-accent hover:text-yellow-dark text-xs sm:text-sm md:text-base block truncate">
-                  ← {t('backToHome')}
-                </Link>
-                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-yellow-accent mt-1 sm:mt-2 truncate">
-                  Magic: The Gathering
-                </h1>
-                {language === 'de' && (
-                  <p className="text-xs sm:text-sm text-gray-400 mt-1 hidden sm:block">
-                    Deutsche Kartennamen und Artworks werden geladen, falls verfügbar
-                  </p>
-                )}
-              </div>
-            </div>
-            <LanguageToggle />
-          </div>
-        </div>
-      </header>
+  
 
       <main className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
         <div className="mb-4 sm:mb-6">
@@ -826,10 +723,6 @@ function MTGPageContent() {
 
 export default function MTGPage() {
   return (
-    <LanguageProvider>
-      <SellListProvider>
         <MTGPageContent />
-      </SellListProvider>
-    </LanguageProvider>
   )
 }

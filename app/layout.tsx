@@ -1,33 +1,47 @@
-import './globals.css'
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import FeatureToggle from '@/components/FeatureToggle'
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { LanguageProvider } from "@/context/LanguageContext";
+import Header from "@/components/Header";
 
-const inter = Inter({ subsets: ['latin'] })
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
-  title: 'Salty Cards Buyback',
-  description: 'Verkaufen Sie Ihre Sammelkarten',
-}
+  title: "CardFlow",
+  description: "Trading Card Buylist Platform",
+};
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="de">
+    <html lang="en">
       <head>
+        {/* Keyrune - MTG Set Icons */}
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/keyrune@latest/css/keyrune.min.css"
         />
       </head>
-      <body className={inter.className}>
-        {children}
-        
-        {/* Feature Toggle - Only visible with Ctrl+Shift+F */}
-        {process.env.NODE_ENV === 'development' && <FeatureToggle />}
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-900 text-white`}
+      >
+        <LanguageProvider>
+          <Header />
+          <main>
+            {children}
+          </main>
+        </LanguageProvider>
       </body>
     </html>
   )

@@ -2,63 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --background: #1a1a1a;
+  --foreground: #ffffff;
+}
+
 body {
-  @apply bg-dark-blue text-white;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
 }
 
-@layer components {
-  .btn-primary {
-    @apply bg-yellow-accent text-black font-semibold py-2 px-4 rounded hover:bg-yellow-dark transition-colors;
-  }
-  
-  .btn-secondary {
-    @apply bg-dark-blue-light text-white font-semibold py-2 px-4 rounded border border-yellow-accent hover:bg-yellow-accent hover:text-black transition-colors;
-  }
-  
-  .card {
-    @apply bg-dark-blue-light border border-gray-700 rounded-lg p-4 shadow-lg;
-  }
-  
-  .input-field {
-    @apply bg-dark-blue-light border border-gray-600 rounded px-4 py-2 text-white focus:outline-none focus:border-yellow-accent;
-  }
-}
-
-/* Mobile-first responsive utilities */
 @layer utilities {
-  .container-mobile {
-    @apply px-3 sm:px-4 md:px-6;
-  }
-  
-  .text-responsive {
-    @apply text-sm sm:text-base;
-  }
-  
-  .heading-responsive {
-    @apply text-xl sm:text-2xl md:text-3xl lg:text-4xl;
-  }
-  
-  .card-mobile {
-    @apply p-3 sm:p-4 md:p-6;
+  .text-balance {
+    text-wrap: balance;
   }
 }
 
-/* Ensure modals are scrollable on mobile */
-.modal-content {
-  max-height: 90vh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+/* Custom Component Styles */
+.card {
+  @apply bg-slate-800 border border-slate-700 rounded-lg shadow-lg;
 }
 
-/* Prevent horizontal scroll on mobile */
-body {
-  overflow-x: hidden;
+.btn-primary {
+  @apply bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors shadow-lg;
 }
 
-/* Better touch targets for mobile */
-@media (max-width: 640px) {
-  button, a {
-    min-height: 44px;
-    min-width: 44px;
-  }
+.btn-secondary {
+  @apply bg-slate-700 hover:bg-slate-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors;
+}
+
+.btn-outline {
+  @apply bg-transparent border-2 border-slate-600 hover:bg-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors;
+}
+
+.input-field {
+  @apply bg-slate-800 border border-slate-600 text-white px-4 py-2 rounded-lg focus:outline-none focus:border-cyan-500 transition-colors;
+}
+
+/* Badge Styles */
+.badge {
+  @apply px-3 py-1 rounded-full text-xs font-semibold text-white;
+}
+
+.badge-pending {
+  @apply bg-yellow-600;
+}
+
+.badge-accepted {
+  @apply bg-green-600;
+}
+
+.badge-rejected {
+  @apply bg-red-600;
+}
+
+.badge-paid {
+  @apply bg-emerald-600;
 }
