@@ -227,12 +227,7 @@ export default function Header() {
 
         {/* Mobile Navigation */}
         <nav className="md:hidden flex gap-4 mt-3 pt-3 border-t border-slate-700">
-          <Link
-            href="/buylist"
-            className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
-          >
-            Buylist
-          </Link>
+         
           <Link
             href="/mtg"
             className="text-sm text-gray-300 hover:text-cyan-400 transition-colors"
