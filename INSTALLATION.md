@@ -10,7 +10,7 @@
 1. Extract the ZIP file to any location (e.g., C:\SaltyCards)
 2. Double-click `start.bat`
 3. Wait for the application to start (first time takes 2-3 minutes)
-4. Open your browser and go to: http://localhost:3000
+4. Open your browser and go to: ''
 
 ### To Stop the Application
 - Double-click `stop.bat`
@@ -34,7 +34,7 @@
 
 ## First Time Setup
 After starting, you may need to:
-1. Create an admin account at http://localhost:3000/register
+1. Create an admin account at ''/register
 2. Configure shop settings in the dashboard
 
 ## Support

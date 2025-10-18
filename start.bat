@@ -32,7 +32,7 @@ echo   Application Started Successfully!
 echo ========================================
 echo.
 echo Your application is now running at:
-echo   http://localhost:3000
+echo   ''
 echo.
 echo To stop the application, run: stop.bat
 echo.
