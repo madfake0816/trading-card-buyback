@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import SafeImage from '@/components/SafeImage'
 import Link from 'next/link'
@@ -23,13 +23,56 @@ export default function FeaturedBuylist() {
   const [cards, setCards] = useState<FeaturedCard[]>([])
   const [loading, setLoading] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [isHovering, setIsHovering] = useState(false)
+  const [touchStart, setTouchStart] = useState(0)
+  const [touchEnd, setTouchEnd] = useState(0)
+  const autoRotateRef = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
 
-  const cardsPerView = 3 // Show 3 cards at a time
+  // Responsive card count
+  const [cardsPerView, setCardsPerView] = useState(3)
 
   useEffect(() => {
     loadFeaturedCards()
+    updateCardsPerView()
+
+    // Handle window resize
+    const handleResize = () => updateCardsPerView()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // Auto-rotate effect
+  useEffect(() => {
+    if (cards.length <= cardsPerView || isHovering) {
+      if (autoRotateRef.current) {
+        clearInterval(autoRotateRef.current)
+      }
+      return
+    }
+
+    autoRotateRef.current = setInterval(() => {
+      handleNext()
+    }, 5000) // Auto-rotate every 5 seconds
+
+    return () => {
+      if (autoRotateRef.current) {
+        clearInterval(autoRotateRef.current)
+      }
+    }
+  }, [cards.length, cardsPerView, isHovering, currentIndex])
+
+  const updateCardsPerView = () => {
+    if (window.innerWidth >= 1536) { // 2xl
+      setCardsPerView(5)
+    } else if (window.innerWidth >= 1280) { // xl
+      setCardsPerView(4)
+    } else if (window.innerWidth >= 768) { // md
+      setCardsPerView(3)
+    } else {
+      setCardsPerView(1)
+    }
+  }
 
   const loadFeaturedCards = async () => {
     try {
@@ -50,17 +93,55 @@ export default function FeaturedBuylist() {
   }
 
   const handlePrevious = () => {
-    setCurrentIndex((prev) => Math.max(0, prev - cardsPerView))
+    setCurrentIndex((prev) => {
+      // Infinite loop - go to end if at start
+      if (prev === 0) {
+        return Math.max(0, cards.length - cardsPerView)
+      }
+      return Math.max(0, prev - cardsPerView)
+    })
   }
 
   const handleNext = () => {
-    setCurrentIndex((prev) => 
-      Math.min(cards.length - cardsPerView, prev + cardsPerView)
-    )
+    setCurrentIndex((prev) => {
+      // Infinite loop - go to start if at end
+      if (prev >= cards.length - cardsPerView) {
+        return 0
+      }
+      return Math.min(cards.length - cardsPerView, prev + cardsPerView)
+    })
   }
 
-  const canGoPrevious = currentIndex > 0
-  const canGoNext = currentIndex < cards.length - cardsPerView
+  // Touch handlers for swipe support
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX)
+  }
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return
+    
+    const distance = touchStart - touchEnd
+    const isLeftSwipe = distance > 50
+    const isRightSwipe = distance < -50
+
+    if (isLeftSwipe) {
+      handleNext()
+    }
+    if (isRightSwipe) {
+      handlePrevious()
+    }
+
+    // Reset
+    setTouchStart(0)
+    setTouchEnd(0)
+  }
+
+  const canGoPrevious = cards.length > cardsPerView
+  const canGoNext = cards.length > cardsPerView
 
   if (loading) {
     return null
@@ -70,12 +151,29 @@ export default function FeaturedBuylist() {
     return null
   }
 
-  // Get visible cards
-  const visibleCards = cards.slice(currentIndex, currentIndex + cardsPerView)
+  // Get visible cards with wrapping
+  const getVisibleCards = () => {
+    if (cards.length <= cardsPerView) {
+      return cards
+    }
+
+    const visible = []
+    for (let i = 0; i < cardsPerView; i++) {
+      const index = (currentIndex + i) % cards.length
+      visible.push(cards[index])
+    }
+    return visible
+  }
+
+  const visibleCards = getVisibleCards()
 
   return (
-    <div className="max-w-6xl mx-auto mt-12 mb-8">
-      <div className="card p-6 sm:p-8 bg-gradient-to-br from-emerald-900 to-slate-800 border-2 border-emerald-600">
+    <div className="max-w-7xl mx-auto mt-12 mb-8 px-4">
+      <div 
+        className="card p-6 sm:p-8 bg-gradient-to-br from-emerald-900 to-slate-800 border-2 border-emerald-600"
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+      >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
           <div>
             <h3 className="text-2xl sm:text-3xl font-bold text-white mb-2">
@@ -103,12 +201,17 @@ export default function FeaturedBuylist() {
         </div>
 
         {/* Carousel */}
-        <div className="relative">
+        <div 
+          className="relative"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           {/* Left Arrow */}
           {canGoPrevious && (
             <button
               onClick={handlePrevious}
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 bg-slate-900 hover:bg-slate-800 text-white p-3 rounded-full shadow-lg transition-all border-2 border-emerald-500 hover:border-emerald-400"
+              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 bg-slate-900 hover:bg-slate-800 text-white p-3 rounded-full shadow-lg transition-all border-2 border-emerald-500 hover:border-emerald-400 hover:scale-110"
               aria-label="Previous cards"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,11 +221,11 @@ export default function FeaturedBuylist() {
           )}
 
           {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6 transition-all duration-300">
             {visibleCards.map((card) => (
               <div
-                key={card.id}
-                className="bg-slate-900 rounded-lg p-3 sm:p-4 hover:bg-slate-800 transition-all transform hover:scale-105 border border-slate-700 hover:border-emerald-500"
+                key={`${card.id}-${currentIndex}`}
+                className="bg-slate-900 rounded-lg p-3 sm:p-4 hover:bg-slate-800 transition-all transform hover:scale-105 border border-slate-700 hover:border-emerald-500 animate-fadeIn"
               >
                 {card.image_url && (
                   <SafeImage
@@ -160,7 +263,7 @@ export default function FeaturedBuylist() {
           {canGoNext && (
             <button
               onClick={handleNext}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 bg-slate-900 hover:bg-slate-800 text-white p-3 rounded-full shadow-lg transition-all border-2 border-emerald-500 hover:border-emerald-400"
+              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 bg-slate-900 hover:bg-slate-800 text-white p-3 rounded-full shadow-lg transition-all border-2 border-emerald-500 hover:border-emerald-400 hover:scale-110"
               aria-label="Next cards"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -173,21 +276,25 @@ export default function FeaturedBuylist() {
         {/* Dots Indicator */}
         {cards.length > cardsPerView && (
           <div className="flex justify-center gap-2 mt-6">
-            {Array.from({ length: Math.ceil(cards.length / cardsPerView) }).map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setCurrentIndex(index * cardsPerView)}
-                className={`h-2 rounded-full transition-all ${
-                  Math.floor(currentIndex / cardsPerView) === index
-                    ? 'w-8 bg-emerald-500'
-                    : 'w-2 bg-slate-600 hover:bg-slate-500'
-                }`}
-                aria-label={`Go to page ${index + 1}`}
-              />
-            ))}
+            {Array.from({ length: Math.ceil(cards.length / cardsPerView) }).map((_, index) => {
+              const pageIndex = Math.floor(currentIndex / cardsPerView)
+              return (
+                <button
+                  key={index}
+                  onClick={() => setCurrentIndex(index * cardsPerView)}
+                  className={`h-2 rounded-full transition-all ${
+                    pageIndex === index
+                      ? 'w-8 bg-emerald-500'
+                      : 'w-2 bg-slate-600 hover:bg-slate-500'
+                  }`}
+                  aria-label={`Go to page ${index + 1}`}
+                />
+              )
+            })}
           </div>
         )}
 
+        {/* Bottom Info */}
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-300">
             <TranslatedText
@@ -197,14 +304,38 @@ export default function FeaturedBuylist() {
           </p>
           {cards.length > cardsPerView && (
             <p className="text-xs text-gray-400 mt-2">
-              <TranslatedText
-                en={`Showing ${currentIndex + 1}-${Math.min(currentIndex + cardsPerView, cards.length)} of ${cards.length} cards`}
-                de={`Zeige ${currentIndex + 1}-${Math.min(currentIndex + cardsPerView, cards.length)} von ${cards.length} Karten`}
-              />
+              {isHovering ? (
+                <TranslatedText
+                  en="👆 Paused - Move mouse away to resume auto-rotation"
+                  de="👆 Pausiert - Bewegen Sie die Maus weg, um die automatische Rotation fortzusetzen"
+                />
+              ) : (
+                <TranslatedText
+                  en={`Showing ${cards.length} featured cards • Auto-rotating every 5 seconds`}
+                  de={`Zeige ${cards.length} gefragte Karten • Automatische Rotation alle 5 Sekunden`}
+                />
+              )}
             </p>
           )}
         </div>
       </div>
+
+      {/* Add CSS animation */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-in-out;
+        }
+      `}</style>
     </div>
   )
 }
