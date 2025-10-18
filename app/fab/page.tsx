@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { LanguageProvider, useLanguage } from '@/context/LanguageContext'
-import { SellListProvider } from '@/context/SellListContext'
+
 import LanguageToggle from '@/components/LanguageToggle'
 import CardSearch from '@/components/CardSearch'
 import CardDisplay from '@/components/CardDisplay'
@@ -77,10 +77,8 @@ function FABPageContent() {
 
 export default function FABPage() {
   return (
-    <LanguageProvider>
-      <SellListProvider>
+
         <FABPageContent />
-      </SellListProvider>
-    </LanguageProvider>
+
   )
 }

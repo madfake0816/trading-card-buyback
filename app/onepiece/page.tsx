@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { LanguageProvider, useLanguage } from '@/context/LanguageContext'
-import { SellListProvider } from '@/context/SellListContext'
 import LanguageToggle from '@/components/LanguageToggle'
 import CardSearch from '@/components/CardSearch'
 import CardDisplay from '@/components/CardDisplay'
@@ -77,10 +76,7 @@ function OnePiecePageContent() {
 
 export default function OnePiecePage() {
   return (
-    <LanguageProvider>
-      <SellListProvider>
         <OnePiecePageContent />
-      </SellListProvider>
-    </LanguageProvider>
+   
   )
 }
