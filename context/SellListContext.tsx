@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export interface SellListItem {
-  id: number
+  id: string
   cardName: string
   setCode: string
   setName: string
