@@ -27,63 +27,70 @@ export async function POST(request: Request) {
     }
 
     // Get shop_id with detailed logging
-    console.log('Attempting to fetch shop_settings...')
-    const { data: shopSettings, error: shopError } = await supabase
-      .from('shop_settings')
-      .select('id, shop_name')
-      .limit(1)
-      .maybeSingle()
+// Get shop_id with detailed logging
+console.log('Attempting to fetch shop_settings...')
+const { data: shopSettings, error: shopError } = await supabase
+  .from('shop_settings')
+  .select('id, shop_name')
+  .limit(1)
+  .maybeSingle()
 
-    console.log('Shop fetch result:', {
-      hasData: !!shopSettings,
-      shopId: shopSettings?.id,
-      shopName: shopSettings?.shop_name,
-      error: shopError
-    })
+console.log('Shop fetch result:', {
+  hasData: !!shopSettings,
+  shopId: shopSettings?.id,
+  shopName: shopSettings?.shop_name,
+  error: shopError
+})
 
-    if (shopError) {
-      console.error('Shop fetch error:', shopError)
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Failed to fetch shop settings',
-          details: shopError.message 
-        },
-        { status: 500 }
-      )
-    }
+if (shopError) {
+  console.error('Shop fetch error:', shopError)
+  return NextResponse.json(
+    { 
+      success: false, 
+      error: 'Failed to fetch shop settings',
+      details: shopError.message 
+    },
+    { status: 500 }
+  )
+}
 
-    if (!shopSettings || !shopSettings.id) {
-      console.error('No shop found or missing ID')
-      
-      // Try to create default shop
-      console.log('Attempting to create default shop...')
-      const { data: newShop, error: createError } = await supabase
-        .from('shop_settings')
-        .insert([{ shop_name: 'CardFlow' }])
-        .select('id')
-        .single()
+// Declare shopId variable
+let shopId: string
 
-      if (createError || !newShop) {
-        console.error('Failed to create shop:', createError)
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Shop not configured and could not create default',
-            details: createError?.message 
-          },
-          { status: 500 }
-        )
-      }
+if (!shopSettings || !shopSettings.id) {
+  console.error('No shop found or missing ID')
+  
+  // Try to create default shop
+  console.log('Attempting to create default shop...')
+  const { data: newShop, error: createError } = await supabase
+    .from('shop_settings')
+    .insert([{ shop_name: 'CardFlow' }])
+    .select('id')
+    .single()
 
-      console.log('Created new shop:', newShop.id)
-      shopSettings.id = newShop.id
-    }
+  if (createError || !newShop || !newShop.id) {
+    console.error('Failed to create shop:', createError)
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Shop not configured and could not create default',
+        details: createError?.message 
+      },
+      { status: 500 }
+    )
+  }
 
-    const shopId = shopSettings.id
+  console.log('Created new shop:', newShop.id)
+  shopId = newShop.id
+} else {
+  shopId = shopSettings.id
+}
 
-    // Calculate totals
-    const totalCards = cards.reduce((sum: number, card: any) => sum + card.quantity, 0)
+// Now shopId is guaranteed to be a string
+console.log('Using shop_id:', shopId)
+
+// Calculate totals
+const totalCards = cards.reduce((sum: number, card: any) => sum + card.quantity, 0)
     const totalMarketValue = cards.reduce(
       (sum: number, card: any) => sum + (card.marketPrice * card.quantity),
       0
