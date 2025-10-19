@@ -1,94 +1,130 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
 
-export async function POST(request: NextRequest) {
-  console.log('🚀 Submission API called')
-  
+export async function POST(request: Request) {
   try {
     const supabase = await createClient()
-    console.log('✅ Supabase client created')
-    
-    // Get authenticated user
+
+    // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    console.log('👤 User check:', user ? `User: ${user.email}` : 'No user')
     
-    if (authError) {
-      console.error('❌ Auth error:', authError)
-      return NextResponse.json({ error: 'Authentication error' }, { status: 401 })
+    if (authError || !user) {
+      console.error('Auth error:', authError)
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
     }
-    
-    if (!user) {
-      console.error('❌ No user found')
-      return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status: 401 })
-    }
-    
+
     const body = await request.json()
-    console.log('📦 Request body received')
-    
-    const { cards, paymentMethod, shopId, notes } = body
-    
-    // Validate input
-    if (!cards || !Array.isArray(cards) || cards.length === 0) {
-      console.error('❌ No cards provided')
-      return NextResponse.json({ error: 'No cards provided' }, { status: 400 })
+    const { cards, payment_method, notes } = body
+
+    if (!cards || cards.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No cards provided' },
+        { status: 400 }
+      )
     }
-    
-    console.log(`📊 Processing ${cards.length} cards`)
-    
-    // Calculate totals
-    const totalCards = cards.reduce((sum: number, card: any) => sum + (card.quantity || 1), 0)
-    const totalMarketValue = cards.reduce((sum: number, card: any) => 
-      sum + ((card.marketPrice || 0) * (card.quantity || 1)), 0
-    )
-    const totalBuyPrice = cards.reduce((sum: number, card: any) => 
-      sum + ((card.buyPrice || 0) * (card.quantity || 1)), 0
-    )
-    
-    console.log('💰 Totals calculated:', {
-      totalCards,
-      totalMarketValue,
-      totalBuyPrice
+
+    // Get shop_id with detailed logging
+    console.log('Attempting to fetch shop_settings...')
+    const { data: shopSettings, error: shopError } = await supabase
+      .from('shop_settings')
+      .select('id, shop_name')
+      .limit(1)
+      .maybeSingle()
+
+    console.log('Shop fetch result:', {
+      hasData: !!shopSettings,
+      shopId: shopSettings?.id,
+      shopName: shopSettings?.shop_name,
+      error: shopError
     })
-    
-    // Use shop ID from request or env
-    const finalShopId = shopId || process.env.NEXT_PUBLIC_DEFAULT_SHOP_ID
-    console.log('🏪 Shop ID:', finalShopId)
-    
-    if (!finalShopId) {
-      console.error('❌ No shop ID')
-      return NextResponse.json({ error: 'Shop ID not configured' }, { status: 500 })
+
+    if (shopError) {
+      console.error('Shop fetch error:', shopError)
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Failed to fetch shop settings',
+          details: shopError.message 
+        },
+        { status: 500 }
+      )
     }
-    
+
+    if (!shopSettings || !shopSettings.id) {
+      console.error('No shop found or missing ID')
+      
+      // Try to create default shop
+      console.log('Attempting to create default shop...')
+      const { data: newShop, error: createError } = await supabase
+        .from('shop_settings')
+        .insert([{ shop_name: 'CardFlow' }])
+        .select('id')
+        .single()
+
+      if (createError || !newShop) {
+        console.error('Failed to create shop:', createError)
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Shop not configured and could not create default',
+            details: createError?.message 
+          },
+          { status: 500 }
+        )
+      }
+
+      console.log('Created new shop:', newShop.id)
+      shopSettings.id = newShop.id
+    }
+
+    const shopId = shopSettings.id
+
+    // Calculate totals
+    const totalCards = cards.reduce((sum: number, card: any) => sum + card.quantity, 0)
+    const totalMarketValue = cards.reduce(
+      (sum: number, card: any) => sum + (card.marketPrice * card.quantity),
+      0
+    )
+    const totalBuyPrice = cards.reduce(
+      (sum: number, card: any) => sum + (card.buyPrice * card.quantity),
+      0
+    )
+
+    // Generate submission number
+    const submissionNumber = `SUB-${Date.now()}`
+
+    console.log('Creating submission with shop_id:', shopId)
+
     // Create submission
-    console.log('📝 Creating submission in database...')
     const { data: submission, error: submissionError } = await supabase
       .from('submissions')
-      .insert({
-        shop_id: finalShopId,
+      .insert([{
         user_id: user.id,
+        shop_id: shopId,
+        submission_number: submissionNumber,
+        status: 'pending',
         total_cards: totalCards,
         total_market_value: totalMarketValue,
         total_buy_price: totalBuyPrice,
-        payment_method: paymentMethod || 'cash',
-        status: 'pending',
-        notes: notes || null
-      })
+        payment_method: payment_method || 'bank_transfer',
+        notes: notes || ''
+      }])
       .select()
       .single()
-    
+
     if (submissionError) {
-      console.error('❌ Submission creation error:', submissionError)
-      return NextResponse.json({ 
-        error: `Database error: ${submissionError.message}`,
-        details: submissionError 
-      }, { status: 500 })
+      console.error('Submission creation error:', submissionError)
+      return NextResponse.json(
+        { success: false, error: submissionError.message },
+        { status: 500 }
+      )
     }
-    
-    console.log('✅ Submission created:', submission.id)
-    
-    // Insert all cards
-    console.log('📇 Inserting cards...')
-    const cardsWithSubmissionId = cards.map((card: any) => ({
+
+    // Create submission cards
+    const submissionCards = cards.map((card: any) => ({
       submission_id: submission.id,
       card_name: card.cardName,
       set_code: card.setCode,
@@ -97,69 +133,40 @@ export async function POST(request: NextRequest) {
       condition: card.condition || 'NM',
       language: card.language || 'en',
       foil: card.foil || false,
-      quantity: card.quantity || 1,
-      market_price: card.marketPrice || 0,
-      buy_price: card.buyPrice || 0,
-      image_url: card.imageUrl || null,
-      tcg: card.tcg || 'Magic: The Gathering'
+      quantity: card.quantity,
+      market_price: card.marketPrice,
+      buy_price: card.buyPrice,
+      image_url: card.imageUrl
     }))
-    
-    console.log('📇 Cards to insert:', cardsWithSubmissionId.length)
-    
+
     const { error: cardsError } = await supabase
       .from('submission_cards')
-      .insert(cardsWithSubmissionId)
-    
+      .insert(submissionCards)
+
     if (cardsError) {
-      console.error('❌ Cards insert error:', cardsError)
-      // Try to delete the submission since cards failed
+      console.error('Cards insert error:', cardsError)
+      // Rollback submission
       await supabase.from('submissions').delete().eq('id', submission.id)
-      
-      return NextResponse.json({ 
-        error: `Failed to save cards: ${cardsError.message}`,
-        details: cardsError 
-      }, { status: 500 })
+      return NextResponse.json(
+        { success: false, error: cardsError.message },
+        { status: 500 }
+      )
     }
-    
-    console.log('✅ Cards inserted successfully')
-    
-    // Update user stats (don't fail if this fails)
-    console.log('👤 Updating user stats...')
-    try {
-      const { error: statsError } = await supabase.rpc('increment_user_stats', {
-        p_user_id: user.id,
-        p_cards: totalCards,
-        p_value: totalBuyPrice
-      })
-      
-      if (statsError) {
-        console.warn('⚠️ Stats update warning:', statsError.message)
-      }
-    } catch (statsErr) {
-      console.warn('⚠️ Stats update failed (non-critical):', statsErr)
-    }
-    
-    console.log('✅ Submission complete!')
-    
+
+    console.log('Submission created successfully:', submission.id)
+
     return NextResponse.json({
       success: true,
       submission: {
         id: submission.id,
-        submission_number: submission.submission_number,
-        total_cards: submission.total_cards,
-        total_buy_price: submission.total_buy_price
+        submission_number: submission.submission_number
       }
     })
-    
+
   } catch (error: any) {
-    console.error('💥 FATAL ERROR:', error)
-    console.error('Stack:', error.stack)
-    
+    console.error('Unexpected error:', error)
     return NextResponse.json(
-      { 
-        error: error.message || 'Failed to create submission',
-        details: error.toString()
-      },
+      { success: false, error: error.message },
       { status: 500 }
     )
   }
