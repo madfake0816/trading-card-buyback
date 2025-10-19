@@ -26,8 +26,8 @@ export const PLAN_FEATURES: Record<string, FeatureFlags> = {
   },
   BASIC: {
     enableMTG: true,
-    enablePokemon: false,
-    enableYugioh: false,
+    enablePokemon: true,
+    enableYugioh: true,
     enableOnepiece: false,
     enableLorcana: false,
     enableFleshAndBlood: false,

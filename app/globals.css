@@ -3,60 +3,126 @@
 @tailwind utilities;
 
 :root {
-  --background: #1a1a1a;
-  --foreground: #ffffff;
+  --background: #0a0e14;
+  --foreground: #e6e8eb;
+  --card: #151a21;
+  --card-hover: #1a2029;
+  --border: #252b35;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --muted: #64748b;
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+@layer base {
+  body {
+    @apply bg-[#0a0e14] text-[#e6e8eb];
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-/* Custom Component Styles */
-.card {
-  @apply bg-slate-800 border border-slate-700 rounded-lg shadow-lg;
+@layer components {
+  /* Modern Card */
+  .card {
+    @apply bg-[#151a21] border border-[#252b35] rounded-lg backdrop-blur-sm;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  }
+
+  .card:hover {
+    @apply bg-[#1a2029] border-[#2d3743];
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Modern Button - Primary */
+  .btn-primary {
+    @apply px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-medium rounded-lg;
+    @apply hover:from-blue-500 hover:to-blue-400 transition-all duration-200;
+    @apply focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#0a0e14];
+    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.25);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px 0 rgba(59, 130, 246, 0.35);
+  }
+
+  /* Modern Button - Outline */
+  .btn-outline {
+    @apply px-6 py-2.5 bg-transparent border border-[#252b35] text-gray-300 font-medium rounded-lg;
+    @apply hover:bg-[#1a2029] hover:border-[#2d3743] transition-all duration-200;
+  }
+
+  /* Modern Input */
+  .input-field {
+    @apply w-full px-4 py-3 bg-[#151a21] border border-[#252b35] rounded-lg;
+    @apply text-white placeholder-gray-500;
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+    @apply transition-all duration-200;
+  }
+
+  /* Glass Effect */
+  .glass {
+    background: rgba(21, 26, 33, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(37, 43, 53, 0.6);
+  }
+
+  /* Gradient Text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent;
+  }
+
+  /* Section Divider */
+  .section-divider {
+    @apply border-t border-[#252b35] my-8;
+  }
 }
 
-.btn-primary {
-  @apply bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors shadow-lg;
+/* Smooth Animations */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.btn-secondary {
-  @apply bg-slate-700 hover:bg-slate-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors;
+.animate-slide-in {
+  animation: slideInUp 0.4s ease-out;
 }
 
-.btn-outline {
-  @apply bg-transparent border-2 border-slate-600 hover:bg-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-.input-field {
-  @apply bg-slate-800 border border-slate-600 text-white px-4 py-2 rounded-lg focus:outline-none focus:border-cyan-500 transition-colors;
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-in-out;
 }
 
-/* Badge Styles */
-.badge {
-  @apply px-3 py-1 rounded-full text-xs font-semibold text-white;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
 }
 
-.badge-pending {
-  @apply bg-yellow-600;
+::-webkit-scrollbar-track {
+  background: #0a0e14;
 }
 
-.badge-accepted {
-  @apply bg-green-600;
+::-webkit-scrollbar-thumb {
+  background: #252b35;
+  border-radius: 5px;
 }
 
-.badge-rejected {
-  @apply bg-red-600;
-}
-
-.badge-paid {
-  @apply bg-emerald-600;
+::-webkit-scrollbar-thumb:hover {
+  background: #2d3743;
 }

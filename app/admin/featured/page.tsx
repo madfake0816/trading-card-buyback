@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import SafeImage from '@/components/SafeImage'
 import { searchMTGCards, getCardImageUrl } from '@/lib/api/scryfall'
+import { searchPokemonCards, getPokemonCardPrice, getPokemonCardImage } from '@/lib/api/pokemon'
+import { searchYugiohCards, getYugiohCardPrice, getYugiohCardImage } from '@/lib/api/yugioh'
 import { calculateBuyPrice } from '@/lib/pricing'
 
 interface FeaturedCard {
@@ -30,7 +32,7 @@ export default function AdminFeaturedCards() {
   const [editingCard, setEditingCard] = useState<FeaturedCard | null>(null)
   const router = useRouter()
   const supabase = createClient()
-
+ const [selectedTCG, setSelectedTCG] = useState<string>('Magic: The Gathering')
   useEffect(() => {
     checkAuth()
   }, [])
@@ -75,61 +77,102 @@ export default function AdminFeaturedCards() {
   }
 
   const handleSearch = async () => {
-    if (!searchQuery || searchQuery.length < 2) {
-      alert('Please enter at least 2 characters')
-      return
+  if (!searchQuery || searchQuery.length < 2) {
+    alert('Please enter at least 2 characters')
+    return
+  }
+
+  setSearching(true)
+  try {
+    let results: any[] = []
+
+    if (selectedTCG === 'Magic: The Gathering') {
+      results = await searchMTGCards(searchQuery, 'en')
+    } else if (selectedTCG === 'Pokémon') {
+      results = await searchPokemonCards(searchQuery)
+    } else if (selectedTCG === 'Yu-Gi-Oh!') {
+      results = await searchYugiohCards(searchQuery)
     }
 
-    setSearching(true)
-    try {
-      const results = await searchMTGCards(searchQuery, 'en')
-      
-      const cardsWithPrices = results
-        .filter(card => {
+    const cardsWithPrices = results
+      .filter(card => {
+        if (selectedTCG === 'Magic: The Gathering') {
           const price = parseFloat(card.prices?.eur || card.prices?.usd || '0')
           return price > 0
-        })
-        .slice(0, 20)
+        } else if (selectedTCG === 'Pokémon') {
+          return getPokemonCardPrice(card) > 0
+        } else if (selectedTCG === 'Yu-Gi-Oh!') {
+          return getYugiohCardPrice(card) > 0
+        }
+        return false
+      })
+      .slice(0, 20)
 
-      setSearchResults(cardsWithPrices)
-    } catch (error) {
-      console.error('Search error:', error)
-      alert('Search failed. Please try again.')
-    } finally {
-      setSearching(false)
-    }
+    setSearchResults(cardsWithPrices)
+  } catch (error) {
+    console.error('Search error:', error)
+    alert('Search failed. Please try again.')
+  } finally {
+    setSearching(false)
   }
+}
 
-  const handleAddCard = async (card: any) => {
-    try {
-      const marketPrice = parseFloat(card.prices?.eur || card.prices?.usd || '0')
-      const buyPrice = calculateBuyPrice(marketPrice)
+const handleAddCard = async (card: any) => {
+  try {
+    let marketPrice = 0
+    let cardName = ''
+    let setCode = ''
+    let setName = ''
+    let imageUrl = ''
 
-      const newCard = {
-        card_name: card.name,
-        set_code: card.set.toUpperCase(),
-        set_name: card.set_name,
-        image_url: getCardImageUrl(card),
-        market_price: marketPrice,
-        buy_price: buyPrice,
-        display_order: cards.length,
-        active: true
-      }
-
-      const { error } = await supabase
-        .from('featured_buylist')
-        .insert([newCard])
-
-      if (error) throw error
-
-      alert('Card added to featured buylist!')
-      setSearchQuery('')
-      setSearchResults([])
-      loadCards()
-    } catch (error: any) {
-      alert(`Error: ${error.message}`)
+    if (selectedTCG === 'Magic: The Gathering') {
+      marketPrice = parseFloat(card.prices?.eur || card.prices?.usd || '0')
+      cardName = card.name
+      setCode = card.set.toUpperCase()
+      setName = card.set_name
+      imageUrl = getCardImageUrl(card)
+    } else if (selectedTCG === 'Pokémon') {
+      marketPrice = getPokemonCardPrice(card)
+      cardName = card.name
+      setCode = card.set.id
+      setName = card.set.name
+      imageUrl = getPokemonCardImage(card)
+    } else if (selectedTCG === 'Yu-Gi-Oh!') {
+      marketPrice = getYugiohCardPrice(card)
+      cardName = card.name
+      setCode = card.card_sets?.[0]?.set_code || 'BASE'
+      setName = card.card_sets?.[0]?.set_name || 'Base Set'
+      imageUrl = getYugiohCardImage(card)
     }
+
+    const buyPrice = calculateBuyPrice(marketPrice)
+
+    const newCard = {
+      card_name: cardName,
+      set_code: setCode,
+      set_name: setName,
+      image_url: imageUrl,
+      market_price: marketPrice,
+      buy_price: buyPrice,
+      display_order: cards.length,
+      active: true,
+      tcg: selectedTCG
+    }
+
+    const { error } = await supabase
+      .from('featured_buylist')
+      .insert([newCard])
+
+    if (error) throw error
+
+    alert('Card added to featured buylist!')
+    setSearchQuery('')
+    setSearchResults([])
+    loadCards()
+  } catch (error: any) {
+    alert(`Error: ${error.message}`)
   }
+}
 
   const handleUpdateCard = async () => {
     if (!editingCard) return
@@ -228,61 +271,104 @@ export default function AdminFeaturedCards() {
         </div>
 
         {/* Add New Card */}
-        <div className="card p-6 mb-8">
-          <h2 className="text-2xl font-bold text-cyan-500 mb-4">Add New Featured Card</h2>
-          <div className="flex gap-4 mb-4">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search for a card..."
-              className="input-field flex-1"
+        {/* Add New Card */}
+<div className="card p-6 mb-8">
+  <h2 className="text-2xl font-bold text-cyan-500 mb-4">Add New Featured Card</h2>
+  
+  {/* TCG Selector - ADD THIS */}
+  <div className="mb-4">
+    <label className="block text-sm font-semibold mb-2 text-white">Select Trading Card Game</label>
+    <select
+      value={selectedTCG}
+      onChange={(e) => {
+        setSelectedTCG(e.target.value)
+        setSearchResults([]) // Clear results when switching
+      }}
+      className="input-field w-full"
+    >
+      <option value="Magic: The Gathering">Magic: The Gathering</option>
+      <option value="Pokémon">Pokémon</option>
+      <option value="Yu-Gi-Oh!">Yu-Gi-Oh!</option>
+    </select>
+  </div>
+
+  <div className="flex gap-4 mb-4">
+    <input
+      type="text"
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+      placeholder={`Search for ${selectedTCG} cards...`}
+      className="input-field flex-1"
+    />
+    <button
+      onClick={handleSearch}
+      disabled={searching}
+      className="btn-primary"
+    >
+      {searching ? 'Searching...' : 'Search'}
+    </button>
+  </div>
+
+  {/* Search Results */}
+  {searchResults.length > 0 && (
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-6">
+      {searchResults.map((card, index) => {
+        let marketPrice = 0
+        let buyPrice = 0
+        let imageUrl = ''
+        let cardName = ''
+        let setName = ''
+
+        if (selectedTCG === 'Magic: The Gathering') {
+          marketPrice = parseFloat(card.prices?.eur || card.prices?.usd || '0')
+          buyPrice = calculateBuyPrice(marketPrice)
+          imageUrl = getCardImageUrl(card)
+          cardName = card.name
+          setName = card.set_name
+        } else if (selectedTCG === 'Pokémon') {
+          marketPrice = getPokemonCardPrice(card)
+          buyPrice = calculateBuyPrice(marketPrice)
+          imageUrl = getPokemonCardImage(card)
+          cardName = card.name
+          setName = card.set.name
+        } else if (selectedTCG === 'Yu-Gi-Oh!') {
+          marketPrice = getYugiohCardPrice(card)
+          buyPrice = calculateBuyPrice(marketPrice)
+          imageUrl = getYugiohCardImage(card)
+          cardName = card.name
+          setName = card.card_sets?.[0]?.set_name || 'Base Set'
+        }
+        
+        return (
+          <div key={index} className="bg-slate-800 rounded-lg p-3">
+            <SafeImage
+              src={imageUrl}
+              alt={cardName}
+              className="w-full rounded mb-2"
+              unoptimized
             />
+            <h4 className="font-bold text-sm mb-1 truncate" title={cardName}>
+              {cardName}
+            </h4>
+            <p className="text-xs text-gray-400 mb-2 truncate">
+              {setName}
+            </p>
+            <div className="text-xs text-emerald-500 font-bold mb-2">
+              Buy: €{buyPrice.toFixed(2)}
+            </div>
             <button
-              onClick={handleSearch}
-              disabled={searching}
-              className="btn-primary"
+              onClick={() => handleAddCard(card)}
+              className="btn-primary w-full text-xs py-1"
             >
-              {searching ? 'Searching...' : 'Search'}
+              Add to Featured
             </button>
           </div>
-
-          {searchResults.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-6">
-              {searchResults.map((card, index) => {
-                const marketPrice = parseFloat(card.prices?.eur || card.prices?.usd || '0')
-                const buyPrice = calculateBuyPrice(marketPrice)
-                
-                return (
-                  <div key={index} className="bg-slate-800 rounded-lg p-3">
-                    <SafeImage
-                      src={getCardImageUrl(card)}
-                      alt={card.name}
-                      className="w-full rounded mb-2"
-                      unoptimized
-                    />
-                    <h4 className="font-bold text-sm mb-1 truncate" title={card.name}>
-                      {card.name}
-                    </h4>
-                    <p className="text-xs text-gray-400 mb-2 truncate">
-                      {card.set_name}
-                    </p>
-                    <div className="text-xs text-emerald-500 font-bold mb-2">
-                      Buy: €{buyPrice.toFixed(2)}
-                    </div>
-                    <button
-                      onClick={() => handleAddCard(card)}
-                      className="btn-primary w-full text-xs py-1"
-                    >
-                      Add to Featured
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        )
+      })}
+    </div>
+  )}
+</div>
 
         {/* Current Featured Cards */}
         <div className="card p-6">
