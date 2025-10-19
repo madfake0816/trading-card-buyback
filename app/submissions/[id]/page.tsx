@@ -121,11 +121,11 @@ export default function SubmissionDetailPage({
               </p>
             </div>
             <span className={`badge ${
-  submission.status === 'pending' ? 'badge-pending' :
-  submission.status === 'accepted' ? 'badge-accepted' :
-  submission.status === 'rejected' ? 'badge-rejected' :
-  submission.status === 'paid' ? 'badge-paid' :
-  'bg-gray-600 text-white'
+            submission.status === 'pending' ? 'badge-pending' :
+            submission.status === 'accepted' ? 'badge-accepted' :
+            submission.status === 'rejected' ? 'badge-rejected' :
+            submission.status === 'paid' ? 'badge-paid' :
+            'bg-gray-600 text-white'
 }`}>
               {submission.status.toUpperCase()}
             </span>
